@@ -67,5 +67,3 @@ module Git
     end
   end
 end
-
-require_relative "treeline/railtie" if defined?(Rails::Railtie)

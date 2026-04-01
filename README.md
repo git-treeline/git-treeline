@@ -26,16 +26,14 @@ In a Rails app, the included Railtie reads the registry at boot and sets `ENV` v
 
 ## Install
 
-Add to your Gemfile:
-
-```ruby
-gem "git-treeline", group: :development
-```
-
-Or install standalone:
-
 ```bash
 gem install git-treeline
+```
+
+**Rails apps:** Use [git-treeline-rails](https://github.com/git-treeline/git-treeline-rails) instead, which includes this CLI as a dependency and adds automatic ENV injection at boot:
+
+```ruby
+gem "git-treeline-rails", group: :development
 ```
 
 ## Quick start
@@ -194,9 +192,7 @@ Each worktree gets its own Redis DB number (1-15). Simple but limited to 15 conc
 
 ## Rails integration
 
-### Railtie
-
-When added to a Rails app's Gemfile, the included Railtie automatically reads the registry and sets `ENV` vars in development before other initializers run. Your existing `config/database.yml`, `config/puma.rb`, and Redis initializers that read from `ENV` will pick up worktree-specific values with no code changes.
+For Rails apps, use [git-treeline-rails](https://github.com/git-treeline/git-treeline-rails). It includes a Railtie that reads the registry at boot and sets `ENV` vars in development before other initializers run — so `config/database.yml`, `config/puma.rb`, and Redis initializers pick up worktree-specific values with no code changes.
 
 ### `bin/setup-worktree`
 
