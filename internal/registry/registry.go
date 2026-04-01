@@ -1,0 +1,194 @@
+package registry
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"syscall"
+	"time"
+
+	"github.com/git-treeline/git-treeline/internal/platform"
+)
+
+const lockTimeout = 5 * time.Second
+
+type Allocation map[string]any
+
+type RegistryData struct {
+	Version     int          `json:"version"`
+	Allocations []Allocation `json:"allocations"`
+}
+
+type Registry struct {
+	Path string
+}
+
+func New(path string) *Registry {
+	if path == "" {
+		path = platform.RegistryFile()
+	}
+	return &Registry{Path: path}
+}
+
+func (r *Registry) Allocations() []Allocation {
+	data := r.load()
+	return data.Allocations
+}
+
+func (r *Registry) Find(worktreePath string) Allocation {
+	for _, a := range r.Allocations() {
+		if getString(a, "worktree") == worktreePath {
+			return a
+		}
+	}
+	return nil
+}
+
+func (r *Registry) FindByProject(project string) []Allocation {
+	var result []Allocation
+	for _, a := range r.Allocations() {
+		if getString(a, "project") == project {
+			result = append(result, a)
+		}
+	}
+	return result
+}
+
+func (r *Registry) UsedPorts() []int {
+	var ports []int
+	for _, a := range r.Allocations() {
+		if ps, ok := a["ports"].([]any); ok {
+			for _, p := range ps {
+				if f, ok := p.(float64); ok {
+					ports = append(ports, int(f))
+				}
+			}
+		} else if p, ok := a["port"].(float64); ok {
+			ports = append(ports, int(p))
+		}
+	}
+	return ports
+}
+
+func (r *Registry) UsedRedisDbs() []int {
+	var dbs []int
+	for _, a := range r.Allocations() {
+		if v, ok := a["redis_db"].(float64); ok {
+			dbs = append(dbs, int(v))
+		}
+	}
+	return dbs
+}
+
+func (r *Registry) Allocate(entry Allocation) error {
+	return r.withLock(func(data *RegistryData) {
+		worktree := getString(entry, "worktree")
+		filtered := make([]Allocation, 0, len(data.Allocations))
+		for _, a := range data.Allocations {
+			if getString(a, "worktree") != worktree {
+				filtered = append(filtered, a)
+			}
+		}
+		if entry["allocated_at"] == nil {
+			entry["allocated_at"] = time.Now().UTC().Format(time.RFC3339)
+		}
+		data.Allocations = append(filtered, entry)
+	})
+}
+
+func (r *Registry) Release(worktreePath string) (bool, error) {
+	removed := false
+	err := r.withLock(func(data *RegistryData) {
+		filtered := make([]Allocation, 0, len(data.Allocations))
+		for _, a := range data.Allocations {
+			if getString(a, "worktree") == worktreePath {
+				removed = true
+			} else {
+				filtered = append(filtered, a)
+			}
+		}
+		data.Allocations = filtered
+	})
+	return removed, err
+}
+
+func (r *Registry) Prune() (int, error) {
+	count := 0
+	err := r.withLock(func(data *RegistryData) {
+		filtered := make([]Allocation, 0, len(data.Allocations))
+		for _, a := range data.Allocations {
+			wt := getString(a, "worktree")
+			if _, err := os.Stat(wt); err == nil {
+				filtered = append(filtered, a)
+			} else {
+				count++
+			}
+		}
+		data.Allocations = filtered
+	})
+	return count, err
+}
+
+func (r *Registry) withLock(fn func(data *RegistryData)) error {
+	if err := os.MkdirAll(filepath.Dir(r.Path), 0o755); err != nil {
+		return err
+	}
+
+	lockPath := r.Path + ".lock"
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return fmt.Errorf("opening lock file: %w", err)
+	}
+	defer lockFile.Close()
+
+	deadline := time.Now().Add(lockTimeout)
+	for {
+		err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for registry lock (%s); if no other git-treeline process is running, remove the lock file", lockPath)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+
+	data := r.load()
+	fn(&data)
+	return r.save(data)
+}
+
+func (r *Registry) load() RegistryData {
+	raw, err := os.ReadFile(r.Path)
+	if err != nil {
+		return RegistryData{Version: 1}
+	}
+	var data RegistryData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return RegistryData{Version: 1}
+	}
+	if data.Allocations == nil {
+		data.Allocations = []Allocation{}
+	}
+	return data
+}
+
+func (r *Registry) save(data RegistryData) error {
+	if err := os.MkdirAll(filepath.Dir(r.Path), 0o755); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(r.Path, append(raw, '\n'), 0o644)
+}
+
+func getString(a Allocation, key string) string {
+	if v, ok := a[key].(string); ok {
+		return v
+	}
+	return ""
+}

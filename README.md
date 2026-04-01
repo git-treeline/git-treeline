@@ -1,51 +1,49 @@
 # Git Treeline
 
-Worktree environment manager — ports, databases, and Redis across parallel development environments.
+Worktree environment manager — isolated ports, databases, and services across parallel development environments.
 
 ## Why
 
-Git worktrees have always let you check out multiple branches side by side. In practice, most developers kept one or two active at a time, and resource collisions were a minor annoyance you could fix with a shell alias.
+Git worktrees let you check out multiple branches side by side. That's always been possible. What's changed is scale.
 
-That changed. AI coding agents work in worktrees. You might have three agents building features in parallel, each in its own worktree — and when they're done, you need to *run* each one to review the work. Boot the server, click through the UI, verify the behavior. You can't review what you can't run, and you can't run three copies of the same app when they're all fighting over port 3000, the same development database, and Redis DB 0.
+AI coding agents work in worktrees. You might have three agents building features in parallel, each in its own worktree — and when they're done, you need to *run* each one to review the work. Boot the server, click through the UI, verify the behavior. You can't review what you can't run, and you can't run three copies of the same app when they're all fighting over port 3000.
 
-The problem isn't new, but the scale is. What used to be a power-user edge case is now a daily workflow, and bespoke shell scripts per-repo don't hold up when you're managing worktrees across multiple projects on the same machine.
-
-Git Treeline makes worktree resource allocation automatic and universal: every worktree gets its own port, database, and Redis namespace, tracked in a central registry that works across all your projects.
+The problem gets worse when your app needs a database, Redis, or other local services — but the simplest case is just ports. If you run `next dev` in three worktrees, they all want port 3000. Git Treeline gives each one its own.
 
 ## How it works
 
 Git Treeline has two layers of configuration and a central registry.
 
-**Project config** (`.treeline.yml`, committed to your repo) describes what the project needs: which database to clone, which files to copy, which env vars to set, and what setup commands to run.
+**Project config** (`.treeline.yml`, committed to your repo) describes what the project needs: port allocation, env vars to set, and optionally database cloning and setup commands.
 
-**User config** (`config.json`, on your machine) controls allocation policy: port range, increment, Redis strategy. This is per-developer, not per-project — it governs how resources are handed out across everything on your machine.
+**User config** (`config.json`, on your machine) controls allocation policy: port range and increment. This is per-developer, not per-project — it governs how resources are handed out across everything on your machine.
 
-**The registry** (`registry.json`) is the ledger. When you run `git-treeline setup`, it allocates the next available port, clones the database from a template, assigns a Redis namespace, writes your env file, and records the allocation. When you run `git-treeline release`, it frees those resources. `git-treeline status` shows you everything that's allocated across all projects.
+**The registry** (`registry.json`) is the ledger. When you run `git-treeline setup`, it allocates the next available port block, writes your env file, and records the allocation. When you run `git-treeline release`, it frees those resources. `git-treeline status` shows everything allocated across all projects.
 
-In a Rails app, the included Railtie reads the registry at boot and sets `ENV` vars before your initializers run — so `config/database.yml`, `config/puma.rb`, and Redis initializers pick up the right values with no code changes.
+For projects that need it, Treeline can also clone PostgreSQL databases from a template and assign Redis namespaces — but those are opt-in.
 
 ## Install
 
+### From source (requires Go 1.22+)
+
 ```bash
-gem install git-treeline
+go install github.com/git-treeline/git-treeline@latest
 ```
 
-**Rails apps:** Use [git-treeline-rails](https://github.com/git-treeline/git-treeline-rails) instead, which includes this CLI as a dependency and adds automatic ENV injection at boot:
+### From release binary
 
-```ruby
-gem "git-treeline-rails", group: :development
-```
+Download the latest binary from [GitHub Releases](https://github.com/git-treeline/git-treeline/releases), extract, and place on your `PATH`.
 
 ## Quick start
 
 ### 1. Initialize your project
 
 ```bash
-cd your-rails-app
-git-treeline init --project myapp --template-db myapp_development
+cd your-project
+git-treeline init --project myapp
 ```
 
-This creates `.treeline.yml` — commit it so your team shares the same config. It also creates your user-level `config.json` if it doesn't exist yet.
+This creates `.treeline.yml` — commit it so your team shares the same config. Edit it to match your needs (see [Framework examples](#framework-examples)).
 
 ### 2. Set up a worktree
 
@@ -56,20 +54,18 @@ git-treeline setup ../myapp-feature-x
 
 Git Treeline will:
 - Allocate the next available port (3010, 3020, etc.)
-- Clone your development database via `createdb --template`
-- Assign a Redis namespace (prefixed by default, or a DB number)
-- Copy credential files from the main repo
-- Write your env file with all the allocated values
-- Run your setup commands (`bundle install`, etc.)
+- Write your env file with the allocated values
+- Run your setup commands (`npm install`, `bundle install`, etc.)
+- Optionally clone your database and assign a Redis namespace
 
 ### 3. Boot the worktree
 
 ```bash
 cd ../myapp-feature-x
-bin/dev
+npm run dev    # or bin/dev, or whatever starts your app
 ```
 
-Visit http://localhost:3010. Your main app can run simultaneously on port 3000.
+Your app reads `PORT` from the env file and starts on 3010. The main copy runs on 3000. No collisions.
 
 ### 4. Check what's allocated
 
@@ -79,60 +75,89 @@ git-treeline status
 
 ```
 myapp:
-  :3010  feature-x   db:myapp_development_feature_x  prefix:myapp:feature-x
-  :3020  bugfix-y    db:myapp_development_bugfix_y   prefix:myapp:bugfix-y
+  :3010  feature-x
+  :3020  bugfix-y
 
-other-project:
-  :3030  experiment  db:other_development_experiment  prefix:other:experiment
+api-service:
+  :3030  experiment  db:api_development_experiment
 ```
 
 ### 5. Release when done
 
 ```bash
-git-treeline release ../myapp-feature-x --drop-db
+git-treeline release ../myapp-feature-x
 git worktree remove ../myapp-feature-x
 ```
 
-## Configuration
+## Framework examples
 
-Git Treeline splits configuration into two layers:
+Git Treeline is framework-agnostic. The `.treeline.yml` config adapts to your stack.
 
-- **User-level** (`config.json`) — allocation policy for your machine: port ranges, Redis strategy. Not project-specific.
-- **Project-level** (`.treeline.yml`) — what the project needs: database template, files to copy, env mappings, setup commands. Committed to the repo.
-
-Both files live at the platform-appropriate location:
-
-| Platform | Path |
-|---|---|
-| macOS | `~/Library/Application Support/git-treeline/` |
-| Linux | `$XDG_CONFIG_HOME/git-treeline/` (defaults to `~/.config/git-treeline/`) |
-| Windows | `%APPDATA%/git-treeline/` |
-
-### User config (`config.json`)
-
-Created automatically by `git-treeline init` or `git-treeline config`. Edit to change allocation policy.
-
-```json
-{
-  "port": {
-    "base": 3000,
-    "increment": 10
-  },
-  "redis": {
-    "strategy": "prefixed",
-    "url": "redis://localhost:6379"
-  }
-}
-```
-
-### Project config (`.treeline.yml`)
+### Next.js
 
 ```yaml
 project: myapp
 
-# Environment file configuration
-# target: file written in the worktree
-# source: file copied from main repo as a starting point (falls back to .env)
+env_file:
+  target: .env.local
+  source: .env.local
+
+env:
+  PORT: "{port}"
+  NEXT_PUBLIC_APP_URL: "http://localhost:{port}"
+
+setup_commands:
+  - npm install
+```
+
+Next.js reads `PORT` from `.env.local` automatically. That's all most Next apps need.
+
+### Next.js with Prisma + Postgres
+
+```yaml
+project: myapp
+
+env_file:
+  target: .env.local
+  source: .env.local
+
+env:
+  PORT: "{port}"
+  DATABASE_URL: "postgresql://localhost:5432/{database}"
+  NEXT_PUBLIC_APP_URL: "http://localhost:{port}"
+
+database:
+  adapter: postgresql
+  template: myapp_development
+  pattern: "{template}_{worktree}"
+
+setup_commands:
+  - npm install
+  - npx prisma migrate deploy
+```
+
+### Node.js / Express
+
+```yaml
+project: myapi
+
+env_file:
+  target: .env
+  source: .env.example
+
+env:
+  PORT: "{port}"
+
+setup_commands:
+  - npm install
+```
+
+### Rails
+
+```yaml
+project: myapp
+ports_needed: 2
+
 env_file:
   target: .env.local
   source: .env.local
@@ -149,98 +174,140 @@ env:
   PORT: "{port}"
   DATABASE_NAME: "{database}"
   REDIS_URL: "{redis_url}"
+  ESBUILD_PORT: "{port_2}"
   APPLICATION_HOST: "localhost:{port}"
 
 setup_commands:
   - bundle install --quiet
   - yarn install --silent
-
-editor:
-  vscode_title: "{project} (:{port}) — {branch} — ${activeEditorShort}"
 ```
 
-#### `env_file` options
+For automatic ENV injection at Rails boot, see [git-treeline-rails](https://github.com/git-treeline/git-treeline-rails).
 
-Different frameworks and tools expect different env file conventions:
+### Frontend SPA (no server resources)
 
-| Convention | `target` | `source` |
-|---|---|---|
-| dotenv (Rails default) | `.env.local` | `.env.local` |
-| dotenv development | `.env.development.local` | `.env.development.local` |
-| Plain `.env` | `.env` | `.env.example` |
-| Next.js | `.env.local` | `.env.local` |
-| Custom | any path | any path |
+```yaml
+project: dashboard
 
-The `source` file is copied from the main repo as a starting point, then the `env` vars are applied as overrides. If the `source` doesn't exist, it falls back to `.env`.
+env_file:
+  target: .env.local
+  source: .env.local
 
-## Redis strategies
+env:
+  PORT: "{port}"
 
-### Prefixed (default, recommended)
-
-All worktrees share Redis DB 0, but keys are namespaced:
-
-```
-myapp:feature-x:cache:...
-myapp:feature-x:sidekiq:...
+setup_commands:
+  - npm install
 ```
 
-Works with Rails cache stores, Sidekiq, and ActionCable out of the box. No Redis DB limit.
+## Configuration
 
-### Database
+### User config (`config.json`)
 
-Each worktree gets its own Redis DB number (1-15). Simple but limited to 15 concurrent worktrees across all projects. Use this if your app has code that doesn't support key prefixing.
+Controls allocation policy for your machine. Created automatically by `git-treeline init` or `git-treeline config`.
 
-## Rails integration
+```json
+{
+  "port": {
+    "base": 3000,
+    "increment": 10
+  },
+  "redis": {
+    "strategy": "prefixed",
+    "url": "redis://localhost:6379"
+  }
+}
+```
 
-For Rails apps, use [git-treeline-rails](https://github.com/git-treeline/git-treeline-rails). It includes a Railtie that reads the registry at boot and sets `ENV` vars in development before other initializers run — so `config/database.yml`, `config/puma.rb`, and Redis initializers pick up worktree-specific values with no code changes.
+User config and registry live at the platform-appropriate location:
 
-### `bin/setup-worktree`
+| Platform | Path |
+|---|---|
+| macOS | `~/Library/Application Support/git-treeline/` |
+| Linux | `$XDG_CONFIG_HOME/git-treeline/` (defaults to `~/.config/git-treeline/`) |
+| Windows | `%APPDATA%/git-treeline/` |
 
-Rails 8 established `bin/setup`, `bin/dev`, and `bin/ci` as conventional binstubs. Git Treeline fits naturally as `bin/setup-worktree` — a script your team commits that wraps the gem with any project-specific steps:
+### Project config (`.treeline.yml`)
+
+See [Framework examples](#framework-examples) for complete examples. Available fields:
+
+| Field | Description |
+|---|---|
+| `project` | Project name (defaults to directory name) |
+| `ports_needed` | Number of contiguous ports per worktree (default: 1) |
+| `env_file.target` | Env file written in the worktree |
+| `env_file.source` | Env file copied from main repo as a starting point |
+| `database.adapter` | `postgresql` (only supported adapter for template cloning) |
+| `database.template` | Source database to clone from (omit if no DB needed) |
+| `database.pattern` | Naming pattern — `{template}_{worktree}` |
+| `copy_files` | Files copied from main repo to worktree |
+| `env` | Key-value pairs written to the env file, with token interpolation |
+| `setup_commands` | Shell commands run in the worktree after setup |
+| `editor.vscode_title` | VS Code window title template |
+
+### Interpolation tokens
+
+Available in `env` values:
+
+| Token | Value |
+|---|---|
+| `{port}` | First allocated port |
+| `{port_N}` | Nth allocated port (e.g. `{port_2}`) |
+| `{database}` | Database name (if configured) |
+| `{redis_url}` | Full Redis URL |
+| `{redis_prefix}` | Redis key prefix (if using prefixed strategy) |
+| `{project}` | Project name |
+| `{worktree}` | Worktree name |
+
+## Database cloning (optional)
+
+If your project uses PostgreSQL, Treeline can clone your development database per-worktree using `createdb --template`. This gives each worktree its own database with zero migration overhead.
+
+Set `database.template` in your `.treeline.yml` to enable this. Omit it entirely if your project doesn't need database isolation, or if you use migrations instead (e.g. `npx prisma migrate deploy` in `setup_commands`).
+
+Use `--drop-db` with `git-treeline release` to clean up cloned databases.
+
+## Redis namespacing (optional)
+
+If your project uses Redis, Treeline can assign each worktree its own namespace to prevent key collisions.
+
+**Prefixed** (default): All worktrees share Redis DB 0, keys are namespaced (`myapp:feature-x:...`). No limit on concurrent worktrees.
+
+**Database**: Each worktree gets its own Redis DB number (1-15). Use this if your app doesn't support key prefixing.
+
+Configure in your user config under `redis.strategy`.
+
+## Use with AI agents
+
+Git Treeline is designed to support AI coding agents that work in worktrees. Any tool that creates worktrees — Conductor, Claude Code, custom scripts — can use Treeline to ensure each worktree gets isolated resources.
+
+### Lifecycle hooks
+
+Most agent frameworks support setup/teardown hooks:
 
 ```bash
-#!/usr/bin/env bash
-set -euo pipefail
+# On worktree creation
+git-treeline setup .
 
-WORKTREE_DIR="${1:-.}"
-
-# Treeline handles resource allocation, env file, and DB cloning
-git-treeline setup "$WORKTREE_DIR"
-
-# Project-specific steps beyond what .treeline.yml covers
-cd "$WORKTREE_DIR"
-bin/rails db:migrate
-bin/rails assets:precompile
+# On worktree teardown
+git-treeline release . --drop-db
 ```
 
-This keeps the convention familiar to any Rails developer while letting Treeline manage the hard parts (port/Redis/DB allocation across your machine).
+### Programmatic access
 
-## Use with Conductor
+Use `--json` for machine-readable output:
 
-Conductor manages worktrees for AI coding agents. Git Treeline plugs into its lifecycle hooks so each agent gets isolated resources automatically.
+```bash
+git-treeline status --json
+```
 
-**Prerequisites:**
+This returns the full registry as JSON — allocated ports, databases, Redis namespaces, and worktree paths. Useful for agent orchestrators that need to know what's running where.
 
-1. `git-treeline` is installed on the machine running Conductor agents
-2. `.treeline.yml` is committed to the repo (so it's present when Conductor checks out a branch from origin)
-3. User config exists on the machine (one-time: `git-treeline config`)
-
-**`conductor.json`:**
+### Conductor
 
 ```json
 {
   "setup": "git-treeline setup .",
-  "archive": "git-treeline release . --drop-db"
-}
-```
-
-`setup` runs when Conductor creates a worktree — allocates a port, clones the database, writes the env file. `archive` runs when the agent finishes — frees the port, drops the cloned database, removes the registry entry.
-
-If you use a `bin/setup-worktree` binstub with project-specific steps beyond what `.treeline.yml` covers:
-
-```json
-{
-  "setup": "bin/setup-worktree .",
   "archive": "git-treeline release . --drop-db"
 }
 ```
@@ -251,12 +318,12 @@ If you use a `bin/setup-worktree` binstub with project-specific steps beyond wha
 |---|---|
 | `git-treeline init` | Generate `.treeline.yml` for current project |
 | `git-treeline setup [PATH]` | Allocate resources and configure a worktree |
-| `git-treeline release [PATH]` | Free allocated resources |
-| `git-treeline status` | Show all allocations across projects |
+| `git-treeline release [PATH]` | Free allocated resources (`--drop-db` to also drop the database) |
+| `git-treeline status` | Show all allocations across projects (`--json` for machine output) |
 | `git-treeline prune` | Remove stale allocations for deleted worktrees |
 | `git-treeline config` | Show or initialize user-level config |
 | `git-treeline version` | Print version |
 
 ## License
 
-Copyright (c) 2026 Product Matter. All rights reserved.
+Apache License 2.0 — see [LICENSE.txt](LICENSE.txt).

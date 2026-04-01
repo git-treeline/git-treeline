@@ -1,14 +1,6 @@
-/.bundle/
-/.yardoc
-/_yardoc/
-/coverage/
-/doc/
-/pkg/
-/spec/reports/
-/tmp/
+# Binary
+git-treeline
+/dist/
 
-# rspec failure tracking
-.rspec_status
-
-# Built gems
-*.gem
+# OS
+.DS_Store
