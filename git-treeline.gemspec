@@ -13,12 +13,12 @@ Gem::Specification.new do |spec|
                      "across git worktrees so multiple branches can run simultaneously without collisions. " \
                      "A central registry at ~/.git-treeline/ tracks allocations across all projects."
   spec.homepage = "https://git-treeline.dev"
-  spec.license = "Proprietary"
+  spec.license = "Nonstandard"
   spec.required_ruby_version = ">= 3.2.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/product-matter/git-treeline"
-  spec.metadata["changelog_uri"] = "https://github.com/product-matter/git-treeline/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/git-treeline/git-treeline"
+  spec.metadata["changelog_uri"] = "https://github.com/git-treeline/git-treeline/blob/main/CHANGELOG.md"
   spec.metadata["rubygems_mfa_required"] = "true"
 
   gemspec = File.basename(__FILE__)
