@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/git-treeline/git-treeline/internal/allocator"
 	"github.com/git-treeline/git-treeline/internal/registry"
 	"github.com/spf13/cobra"
 )
 
 var statusProject string
 var statusJSON bool
+var statusCheck bool
 
 func init() {
 	statusCmd.Flags().StringVar(&statusProject, "project", "", "Filter by project name")
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON")
+	statusCmd.Flags().BoolVar(&statusCheck, "check", false, "Probe allocated ports to check if services are running")
 	rootCmd.AddCommand(statusCmd)
 }
 
@@ -26,6 +29,13 @@ var statusCmd = &cobra.Command{
 		allocs := reg.Allocations()
 		if statusProject != "" {
 			allocs = reg.FindByProject(statusProject)
+		}
+
+		if statusCheck {
+			for _, a := range allocs {
+				ports := getPorts(a)
+				a["listening"] = allocator.CheckPortsListening(ports)
+			}
 		}
 
 		if statusJSON {
@@ -70,10 +80,27 @@ var statusCmd = &cobra.Command{
 					redis = fmt.Sprintf("db:%d", int(rdb))
 				}
 
-				fmt.Printf("  :%s  %s  db:%s  %s\n", portLabel, name, db, redis)
+				line := fmt.Sprintf("  :%s  %s", portLabel, name)
+				if db != "" {
+					line += fmt.Sprintf("  db:%s", db)
+				}
+				if redis != "" {
+					line += fmt.Sprintf("  %s", redis)
+				}
+
+				if statusCheck {
+					if listening, ok := a["listening"].(bool); ok && listening {
+						line += "  [up]"
+					} else {
+						line += "  [down]"
+					}
+				}
+
+				fmt.Println(line)
 			}
 		}
 
 		return nil
 	},
 }
+

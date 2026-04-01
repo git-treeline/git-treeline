@@ -2,6 +2,7 @@ package allocator
 
 import (
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 
@@ -27,6 +28,7 @@ type Allocation struct {
 	Database     string
 	RedisDB      int
 	RedisPrefix  string
+	Reused       bool
 }
 
 func (a *Allocation) ToRegistryEntry() registry.Allocation {
@@ -77,7 +79,48 @@ func New(uc *config.UserConfig, pc *config.ProjectConfig, reg *registry.Registry
 	return &Allocator{UserConfig: uc, ProjectConfig: pc, Registry: reg}
 }
 
+// Allocate returns an allocation for the given worktree. If an existing
+// allocation is found in the registry, it is reused (idempotent). Otherwise
+// a new allocation is created.
 func (al *Allocator) Allocate(worktreePath, worktreeName string) (*Allocation, error) {
+	if existing := al.reuseExisting(worktreePath, worktreeName); existing != nil {
+		return existing, nil
+	}
+	return al.allocateNew(worktreePath, worktreeName)
+}
+
+func (al *Allocator) reuseExisting(worktreePath, worktreeName string) *Allocation {
+	entry := al.Registry.Find(worktreePath)
+	if entry == nil {
+		return nil
+	}
+
+	ports := extractPorts(entry)
+	if len(ports) == 0 {
+		return nil
+	}
+
+	alloc := &Allocation{
+		Project:      getString(entry, "project"),
+		Worktree:     worktreePath,
+		WorktreeName: worktreeName,
+		Port:         ports[0],
+		Ports:        ports,
+		Database:     getString(entry, "database"),
+		Reused:       true,
+	}
+
+	if prefix := getString(entry, "redis_prefix"); prefix != "" {
+		alloc.RedisPrefix = prefix
+	}
+	if db := getFloat(entry, "redis_db"); db > 0 {
+		alloc.RedisDB = int(db)
+	}
+
+	return alloc
+}
+
+func (al *Allocator) allocateNew(worktreePath, worktreeName string) (*Allocation, error) {
 	count := al.ProjectConfig.PortsNeeded()
 	if count > al.UserConfig.PortIncrement() {
 		return nil, fmt.Errorf("ports_needed (%d) exceeds port.increment (%d); increase port.increment in your config.json to at least %d",
@@ -118,7 +161,7 @@ func (al *Allocator) nextAvailablePorts(count int) []int {
 		for i := range count {
 			port := candidate + i
 			block[i] = port
-			if usedSet[port] {
+			if usedSet[port] || !IsPortFree(port) {
 				conflict = true
 			}
 		}
@@ -127,6 +170,29 @@ func (al *Allocator) nextAvailablePorts(count int) []int {
 		}
 		candidate += al.UserConfig.PortIncrement()
 	}
+}
+
+// IsPortFree attempts a TCP listen to verify nothing is bound on the port.
+func IsPortFree(port int) bool {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return false
+	}
+	ln.Close()
+	return true
+}
+
+// CheckPortsListening returns true if at least one of the given ports has
+// an active TCP listener.
+func CheckPortsListening(ports []int) bool {
+	for _, port := range ports {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 200*1e6)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+	}
+	return false
 }
 
 func (al *Allocator) allocateRedis(worktreeName string) (int, string) {
@@ -176,4 +242,36 @@ func intsToAny(ints []int) []any {
 		result[i] = v
 	}
 	return result
+}
+
+func extractPorts(entry registry.Allocation) []int {
+	if ps, ok := entry["ports"].([]any); ok {
+		result := make([]int, 0, len(ps))
+		for _, p := range ps {
+			if f, ok := p.(float64); ok {
+				result = append(result, int(f))
+			}
+		}
+		if len(result) > 0 {
+			return result
+		}
+	}
+	if p, ok := entry["port"].(float64); ok {
+		return []int{int(p)}
+	}
+	return nil
+}
+
+func getString(entry registry.Allocation, key string) string {
+	if v, ok := entry[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func getFloat(entry registry.Allocation, key string) float64 {
+	if v, ok := entry[key].(float64); ok {
+		return v
+	}
+	return 0
 }

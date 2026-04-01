@@ -8,7 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var pruneStale bool
+
 func init() {
+	pruneCmd.Flags().BoolVar(&pruneStale, "stale", false, "Also remove allocations for directories not listed in git worktree list")
 	rootCmd.AddCommand(pruneCmd)
 }
 
@@ -17,7 +20,15 @@ var pruneCmd = &cobra.Command{
 	Short: "Remove allocations for worktrees that no longer exist on disk",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		reg := registry.New("")
-		count, err := reg.Prune()
+
+		var count int
+		var err error
+		if pruneStale {
+			count, err = reg.PruneStale()
+		} else {
+			count, err = reg.Prune()
+		}
+
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)

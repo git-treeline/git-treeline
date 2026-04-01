@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -128,6 +130,45 @@ func (r *Registry) Prune() (int, error) {
 		data.Allocations = filtered
 	})
 	return count, err
+}
+
+// PruneStale removes allocations where the directory doesn't exist OR the
+// directory exists but is not a registered git worktree.
+func (r *Registry) PruneStale() (int, error) {
+	knownWorktrees := listGitWorktrees()
+
+	count := 0
+	err := r.withLock(func(data *RegistryData) {
+		filtered := make([]Allocation, 0, len(data.Allocations))
+		for _, a := range data.Allocations {
+			wt := getString(a, "worktree")
+			if _, err := os.Stat(wt); err != nil {
+				count++
+				continue
+			}
+			if knownWorktrees != nil && !knownWorktrees[wt] {
+				count++
+				continue
+			}
+			filtered = append(filtered, a)
+		}
+		data.Allocations = filtered
+	})
+	return count, err
+}
+
+func listGitWorktrees() map[string]bool {
+	out, err := exec.Command("git", "worktree", "list", "--porcelain").Output()
+	if err != nil {
+		return nil
+	}
+	result := make(map[string]bool)
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			result[strings.TrimPrefix(line, "worktree ")] = true
+		}
+	}
+	return result
 }
 
 func (r *Registry) withLock(fn func(data *RegistryData)) error {

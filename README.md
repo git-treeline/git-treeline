@@ -317,10 +317,14 @@ This returns the full registry as JSON — allocated ports, databases, Redis nam
 | Command | Description |
 |---|---|
 | `git-treeline init` | Generate `.treeline.yml` for current project |
-| `git-treeline setup [PATH]` | Allocate resources and configure a worktree |
+| `git-treeline setup [PATH]` | Allocate resources and configure a worktree (idempotent — safe to re-run) |
+| `git-treeline setup --dry-run` | Print what would be allocated without writing anything |
+| `git-treeline refresh [PATH]` | Re-interpolate env file using existing allocation (no re-clone, no setup commands) |
 | `git-treeline release [PATH]` | Free allocated resources (`--drop-db` to also drop the database) |
 | `git-treeline status` | Show all allocations across projects (`--json` for machine output) |
-| `git-treeline prune` | Remove stale allocations for deleted worktrees |
+| `git-treeline status --check` | Probe allocated ports to show which services are actually running |
+| `git-treeline prune` | Remove allocations for deleted worktree directories |
+| `git-treeline prune --stale` | Also remove allocations not listed in `git worktree list` |
 | `git-treeline config` | Show or initialize user-level config |
 | `git-treeline version` | Print version |
 

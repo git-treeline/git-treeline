@@ -10,9 +10,11 @@ import (
 )
 
 var setupMainRepo string
+var setupDryRun bool
 
 func init() {
 	setupCmd.Flags().StringVar(&setupMainRepo, "main-repo", "", "Path to the main repository (auto-detected if omitted)")
+	setupCmd.Flags().BoolVar(&setupDryRun, "dry-run", false, "Print what would be allocated without writing anything")
 	rootCmd.AddCommand(setupCmd)
 }
 
@@ -28,6 +30,7 @@ var setupCmd = &cobra.Command{
 
 		uc := config.LoadUserConfig("")
 		s := setup.New(path, setupMainRepo, uc)
+		s.Options.DryRun = setupDryRun
 		_, err := s.Run()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)

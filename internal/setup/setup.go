@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/git-treeline/git-treeline/internal/allocator"
 	"github.com/git-treeline/git-treeline/internal/config"
@@ -19,6 +20,14 @@ import (
 
 var dbIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 
+// Per-template lock for serializing concurrent database clones.
+var templateLocks sync.Map
+
+type Options struct {
+	DryRun      bool
+	RefreshOnly bool
+}
+
 type Setup struct {
 	WorktreePath  string
 	MainRepo      string
@@ -27,6 +36,7 @@ type Setup struct {
 	Registry      *registry.Registry
 	Allocator     *allocator.Allocator
 	Log           io.Writer
+	Options       Options
 }
 
 func New(worktreePath string, mainRepo string, uc *config.UserConfig) *Setup {
@@ -58,7 +68,13 @@ func (s *Setup) Run() (*allocator.Allocation, error) {
 	}
 	redisURL := s.Allocator.BuildRedisURL(alloc)
 
-	if len(alloc.Ports) > 1 {
+	if s.Options.DryRun {
+		return alloc, s.printDryRun(alloc, redisURL)
+	}
+
+	if alloc.Reused {
+		s.log("Reusing existing allocation for '%s'", worktreeName)
+	} else if len(alloc.Ports) > 1 {
 		s.log("Allocating ports %s for '%s'", joinInts(alloc.Ports, ", "), worktreeName)
 	} else {
 		s.log("Allocating port %d for '%s'", alloc.Port, worktreeName)
@@ -68,29 +84,19 @@ func (s *Setup) Run() (*allocator.Allocation, error) {
 	}
 	s.log("Redis: %s", redisURL)
 
-	if err := s.Registry.Allocate(alloc.ToRegistryEntry()); err != nil {
-		return nil, fmt.Errorf("registering allocation: %w", err)
-	}
-
-	s.copyFiles()
-
-	interpMap := alloc.ToInterpolationMap()
-	envVars := s.buildEnvVars(interpMap, redisURL)
-	if err := s.writeEnvFile(envVars); err != nil {
-		return nil, fmt.Errorf("writing env file: %w", err)
-	}
-
-	if alloc.Database != "" {
-		if err := s.cloneDatabase(alloc.Database); err != nil {
-			return nil, err
+	if !alloc.Reused {
+		if err := s.Registry.Allocate(alloc.ToRegistryEntry()); err != nil {
+			return nil, fmt.Errorf("registering allocation: %w", err)
 		}
 	}
 
-	if err := s.runSetupCommands(); err != nil {
+	if err := s.runPostAllocation(alloc, redisURL); err != nil {
+		if !alloc.Reused {
+			s.Registry.Release(s.WorktreePath)
+			s.log("Rolled back allocation due to error")
+		}
 		return nil, err
 	}
-
-	s.configureEditor(alloc)
 
 	s.log("")
 	s.log("Done! Worktree '%s' ready:", worktreeName)
@@ -107,6 +113,64 @@ func (s *Setup) Run() (*allocator.Allocation, error) {
 	s.log("  Dir:      %s", s.WorktreePath)
 
 	return alloc, nil
+}
+
+func (s *Setup) runPostAllocation(alloc *allocator.Allocation, redisURL string) error {
+	s.copyFiles()
+
+	interpMap := alloc.ToInterpolationMap()
+	envVars := s.buildEnvVars(interpMap, redisURL)
+	if err := s.writeEnvFile(envVars); err != nil {
+		return fmt.Errorf("writing env file: %w", err)
+	}
+
+	if s.Options.RefreshOnly {
+		s.configureEditor(alloc)
+		return nil
+	}
+
+	if alloc.Database != "" && !alloc.Reused {
+		if err := s.cloneDatabase(alloc.Database); err != nil {
+			return err
+		}
+	}
+
+	if err := s.runSetupCommands(); err != nil {
+		return err
+	}
+
+	s.configureEditor(alloc)
+	return nil
+}
+
+func (s *Setup) printDryRun(alloc *allocator.Allocation, redisURL string) error {
+	worktreeName := filepath.Base(s.WorktreePath)
+
+	if alloc.Reused {
+		s.log("[dry-run] Would reuse existing allocation for '%s'", worktreeName)
+	} else {
+		s.log("[dry-run] Would allocate for '%s'", worktreeName)
+	}
+
+	if len(alloc.Ports) > 1 {
+		s.log("  Ports:    %s", joinInts(alloc.Ports, ", "))
+	} else {
+		s.log("  Port:     %d", alloc.Port)
+	}
+	if alloc.Database != "" {
+		s.log("  Database: %s", alloc.Database)
+	}
+	s.log("  Redis:    %s", redisURL)
+	s.log("  Dir:      %s", s.WorktreePath)
+
+	interpMap := alloc.ToInterpolationMap()
+	envVars := s.buildEnvVars(interpMap, redisURL)
+	s.log("  Env vars:")
+	for k, v := range envVars {
+		s.log("    %s=%s", k, v)
+	}
+
+	return nil
 }
 
 func detectMainRepo(worktreePath string) string {
@@ -223,6 +287,11 @@ func (s *Setup) cloneDatabase(dbName string) error {
 		}
 	}
 
+	// Serialize clones from the same template to avoid PostgreSQL conflicts.
+	mu := getTemplateLock(template)
+	mu.Lock()
+	defer mu.Unlock()
+
 	s.log("Terminating connections to %s", template)
 	terminateSQL := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND pid <> pg_backend_pid();", template)
 	exec.Command("psql", "-d", "postgres", "-c", terminateSQL).Run()
@@ -237,6 +306,11 @@ func (s *Setup) cloneDatabase(dbName string) error {
 
 	s.log("Database cloned")
 	return nil
+}
+
+func getTemplateLock(template string) *sync.Mutex {
+	actual, _ := templateLocks.LoadOrStore(template, &sync.Mutex{})
+	return actual.(*sync.Mutex)
 }
 
 func (s *Setup) runSetupCommands() error {

@@ -119,3 +119,16 @@ func TestRegistry_AllocateReplaces(t *testing.T) {
 		t.Errorf("expected updated port 3020, got %v", allocs[0]["port"])
 	}
 }
+
+func TestRegistry_PruneStale_RemovesMissingDirs(t *testing.T) {
+	reg := newTestRegistry(t)
+	reg.Allocate(Allocation{"worktree": "/does/not/exist/at/all"})
+
+	count, err := reg.PruneStale()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 pruned, got %d", count)
+	}
+}

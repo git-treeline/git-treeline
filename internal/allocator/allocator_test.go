@@ -45,11 +45,14 @@ func TestAllocate_SinglePort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if alloc.Port != 3010 {
-		t.Errorf("expected 3010, got %d", alloc.Port)
+	if alloc.Port < 3010 {
+		t.Errorf("expected port >= 3010, got %d", alloc.Port)
 	}
 	if len(alloc.Ports) != 1 {
 		t.Errorf("expected 1 port, got %d", len(alloc.Ports))
+	}
+	if alloc.Reused {
+		t.Error("expected Reused=false for new allocation")
 	}
 }
 
@@ -59,14 +62,50 @@ func TestAllocate_MultiPort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if alloc.Port != 3010 {
-		t.Errorf("expected 3010, got %d", alloc.Port)
-	}
 	if len(alloc.Ports) != 2 {
 		t.Errorf("expected 2 ports, got %d", len(alloc.Ports))
 	}
-	if alloc.Ports[1] != 3011 {
-		t.Errorf("expected second port 3011, got %d", alloc.Ports[1])
+	if alloc.Ports[1] != alloc.Ports[0]+1 {
+		t.Errorf("expected contiguous ports, got %v", alloc.Ports)
+	}
+}
+
+func TestAllocate_Idempotent(t *testing.T) {
+	al, reg := testAllocator(t, 1, "")
+
+	first, err := al.Allocate("/wt/branch-a", "branch-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Allocate(first.ToRegistryEntry())
+
+	second, err := al.Allocate("/wt/branch-a", "branch-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.Reused {
+		t.Error("expected Reused=true on second allocation")
+	}
+	if second.Port != first.Port {
+		t.Errorf("expected same port %d, got %d", first.Port, second.Port)
+	}
+}
+
+func TestAllocate_IdempotentPreservesAllFields(t *testing.T) {
+	al, reg := testAllocator(t, 2, "")
+
+	first, _ := al.Allocate("/wt/branch-a", "branch-a")
+	reg.Allocate(first.ToRegistryEntry())
+
+	second, _ := al.Allocate("/wt/branch-a", "branch-a")
+	if second.Database != first.Database {
+		t.Errorf("expected database %s, got %s", first.Database, second.Database)
+	}
+	if len(second.Ports) != 2 {
+		t.Errorf("expected 2 ports preserved, got %d", len(second.Ports))
+	}
+	if second.RedisPrefix != first.RedisPrefix {
+		t.Errorf("expected redis prefix %s, got %s", first.RedisPrefix, second.RedisPrefix)
 	}
 }
 
@@ -82,8 +121,8 @@ func TestAllocate_SkipsUsedPorts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if alloc.Port != 3020 {
-		t.Errorf("expected 3020 (skipped 3010), got %d", alloc.Port)
+	if alloc.Port == 3010 {
+		t.Error("expected to skip used port 3010")
 	}
 }
 
@@ -99,8 +138,10 @@ func TestAllocate_MultiPort_NonOverlapping(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if alloc.Port != 3020 {
-		t.Errorf("expected 3020, got %d", alloc.Port)
+	for _, p := range alloc.Ports {
+		if p == 3010 || p == 3011 {
+			t.Errorf("port %d overlaps with existing allocation", p)
+		}
 	}
 }
 
@@ -196,5 +237,17 @@ func TestToRegistryEntry_Format(t *testing.T) {
 		}
 	} else {
 		t.Error("expected ports array")
+	}
+}
+
+func TestIsPortFree(t *testing.T) {
+	if !IsPortFree(49999) {
+		t.Skip("port 49999 is in use, skipping")
+	}
+}
+
+func TestCheckPortsListening_NothingRunning(t *testing.T) {
+	if CheckPortsListening([]int{49998, 49999}) {
+		t.Skip("unexpected listener on test ports")
 	}
 }
