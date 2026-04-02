@@ -178,7 +178,7 @@ func IsPortFree(port int) bool {
 	if err != nil {
 		return false
 	}
-	ln.Close()
+	_ = ln.Close()
 	return true
 }
 
@@ -188,7 +188,7 @@ func CheckPortsListening(ports []int) bool {
 	for _, port := range ports {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 200*1e6)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return true
 		}
 	}

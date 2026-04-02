@@ -181,7 +181,7 @@ func (r *Registry) withLock(fn func(data *RegistryData)) error {
 	if err != nil {
 		return fmt.Errorf("opening lock file: %w", err)
 	}
-	defer lockFile.Close()
+	defer func() { _ = lockFile.Close() }()
 
 	deadline := time.Now().Add(lockTimeout)
 	for {

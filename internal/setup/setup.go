@@ -358,10 +358,10 @@ func (s *Setup) configureEditor(alloc *allocator.Allocation) {
 
 func (s *Setup) log(format string, args ...any) {
 	if format == "" {
-		fmt.Fprintln(s.Log)
+		_, _ = fmt.Fprintln(s.Log)
 		return
 	}
-	fmt.Fprintf(s.Log, "==> "+format+"\n", args...)
+	_, _ = fmt.Fprintf(s.Log, "==> "+format+"\n", args...)
 }
 
 func joinInts(ints []int, sep string) string {
