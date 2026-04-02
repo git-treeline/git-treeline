@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-31
+
+- Add `new` command: create worktree + allocate resources + run setup in one step
+- Add `review` command: check out a GitHub PR into a worktree with full setup (requires `gh` CLI)
+- Add `--watch` flag to `status`: auto-refresh with port health checks on a loop
+- Add `--interval` flag to `status --watch` for configurable refresh rate
+- Add `start_command` config field in `.treeline.yml` for optional app startup
+- Add `--start` flag on `new` and `review` to run `start_command` after setup
+- Add `--dry-run` flag on `new` to preview without side effects
+- Extract shared `internal/worktree` package for git worktree operations
+- Extract `internal/github` package for `gh` CLI integration
+- Refactor `detectMainRepo` from setup into shared worktree package
+
 ## [0.4.0] - 2026-03-31
 
 - Add CI with golangci-lint, govulncheck, and go vet

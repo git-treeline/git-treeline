@@ -16,6 +16,7 @@ import (
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/interpolation"
 	"github.com/git-treeline/git-treeline/internal/registry"
+	"github.com/git-treeline/git-treeline/internal/worktree"
 )
 
 var dbIdentifierRe = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
@@ -42,7 +43,7 @@ type Setup struct {
 func New(worktreePath string, mainRepo string, uc *config.UserConfig) *Setup {
 	absPath, _ := filepath.Abs(worktreePath)
 	if mainRepo == "" {
-		mainRepo = detectMainRepo(absPath)
+		mainRepo = worktree.DetectMainRepo(absPath)
 	}
 
 	pc := config.LoadProjectConfig(mainRepo)
@@ -171,20 +172,6 @@ func (s *Setup) printDryRun(alloc *allocator.Allocation, redisURL string) error 
 	}
 
 	return nil
-}
-
-func detectMainRepo(worktreePath string) string {
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	cmd.Dir = worktreePath
-	out, err := cmd.Output()
-	if err != nil {
-		return worktreePath
-	}
-	lines := strings.Split(string(out), "\n")
-	if len(lines) > 0 && strings.HasPrefix(lines[0], "worktree ") {
-		return strings.TrimPrefix(lines[0], "worktree ")
-	}
-	return worktreePath
 }
 
 func (s *Setup) copyFiles() {
