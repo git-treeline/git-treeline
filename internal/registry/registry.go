@@ -194,7 +194,7 @@ func (r *Registry) withLock(fn func(data *RegistryData)) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	defer syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN)
+	defer func() { _ = syscall.Flock(int(lockFile.Fd()), syscall.LOCK_UN) }()
 
 	data := r.load()
 	fn(&data)

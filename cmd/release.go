@@ -39,11 +39,11 @@ var releaseCmd = &cobra.Command{
 		if releaseDropDB {
 			if db, ok := alloc["database"].(string); ok && db != "" {
 				fmt.Printf("==> Dropping database %s\n", db)
-				exec.Command("dropdb", "--if-exists", db).Run()
+				_ = exec.Command("dropdb", "--if-exists", db).Run()
 			}
 		}
 
-		reg.Release(absPath)
+		_, _ = reg.Release(absPath)
 		fmt.Printf("==> Released resources for %s\n", filepath.Base(absPath))
 
 		ports := getPorts(alloc)

@@ -99,6 +99,6 @@ func (uc *UserConfig) load() map[string]any {
 func copyMap(m map[string]any) map[string]any {
 	data, _ := json.Marshal(m)
 	var result map[string]any
-	json.Unmarshal(data, &result)
+	_ = json.Unmarshal(data, &result)
 	return result
 }

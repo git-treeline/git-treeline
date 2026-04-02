@@ -25,7 +25,7 @@ func TestUserConfig_Defaults(t *testing.T) {
 func TestUserConfig_CustomValues(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	os.WriteFile(path, []byte(`{"port":{"base":4000,"increment":20}}`), 0o644)
+	_ = os.WriteFile(path, []byte(`{"port":{"base":4000,"increment":20}}`), 0o644)
 
 	uc := LoadUserConfig(path)
 	if uc.PortBase() != 4000 {

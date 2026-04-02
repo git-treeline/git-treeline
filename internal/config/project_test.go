@@ -45,7 +45,7 @@ setup_commands:
 editor:
   vscode_title: '{project} (:{port})'
 `
-	os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
 	pc := LoadProjectConfig(dir)
 
 	if pc.Project() != "salt" {

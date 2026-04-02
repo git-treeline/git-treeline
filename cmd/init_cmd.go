@@ -105,5 +105,5 @@ func openInEditor(path string) {
 	if editor == "" {
 		return
 	}
-	exec.Command(editor, path).Run()
+	_ = exec.Command(editor, path).Run()
 }

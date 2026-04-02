@@ -92,7 +92,7 @@ func (s *Setup) Run() (*allocator.Allocation, error) {
 
 	if err := s.runPostAllocation(alloc, redisURL); err != nil {
 		if !alloc.Reused {
-			s.Registry.Release(s.WorktreePath)
+			_, _ = s.Registry.Release(s.WorktreePath)
 			s.log("Rolled back allocation due to error")
 		}
 		return nil, err
@@ -194,12 +194,12 @@ func (s *Setup) copyFiles() {
 		if _, err := os.Stat(src); err != nil {
 			continue
 		}
-		os.MkdirAll(filepath.Dir(dest), 0o755)
+		_ = os.MkdirAll(filepath.Dir(dest), 0o755)
 		data, err := os.ReadFile(src)
 		if err != nil {
 			continue
 		}
-		os.WriteFile(dest, data, 0o644)
+		_ = os.WriteFile(dest, data, 0o644)
 		s.log("Copied %s", file)
 	}
 }
@@ -222,7 +222,7 @@ func (s *Setup) writeEnvFile(vars map[string]string) error {
 		source = filepath.Join(s.MainRepo, ".env")
 	}
 	if data, err := os.ReadFile(source); err == nil {
-		os.WriteFile(envPath, data, 0o644)
+		_ = os.WriteFile(envPath, data, 0o644)
 	}
 
 	for key, value := range vars {
@@ -237,7 +237,7 @@ func (s *Setup) writeEnvFile(vars map[string]string) error {
 
 func updateOrAppend(file, key, value string) error {
 	if _, err := os.Stat(file); err != nil {
-		os.WriteFile(file, []byte{}, 0o644)
+		_ = os.WriteFile(file, []byte{}, 0o644)
 	}
 
 	data, err := os.ReadFile(file)
@@ -294,7 +294,7 @@ func (s *Setup) cloneDatabase(dbName string) error {
 
 	s.log("Terminating connections to %s", template)
 	terminateSQL := fmt.Sprintf("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '%s' AND pid <> pg_backend_pid();", template)
-	exec.Command("psql", "-d", "postgres", "-c", terminateSQL).Run()
+	_ = exec.Command("psql", "-d", "postgres", "-c", terminateSQL).Run()
 
 	s.log("Cloning database %s -> %s", template, dbName)
 	cmd := exec.Command("createdb", dbName, "--template", template)
@@ -349,10 +349,10 @@ func (s *Setup) configureEditor(alloc *allocator.Allocation) {
 	).Replace(titleTemplate)
 
 	vscodeDir := filepath.Join(s.WorktreePath, ".vscode")
-	os.MkdirAll(vscodeDir, 0o755)
+	_ = os.MkdirAll(vscodeDir, 0o755)
 	settings := map[string]string{"window.title": title}
 	data, _ := json.MarshalIndent(settings, "", "  ")
-	os.WriteFile(filepath.Join(vscodeDir, "settings.json"), append(data, '\n'), 0o644)
+	_ = os.WriteFile(filepath.Join(vscodeDir, "settings.json"), append(data, '\n'), 0o644)
 	s.log(".vscode/settings.json written")
 }
 

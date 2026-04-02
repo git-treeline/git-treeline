@@ -39,12 +39,12 @@ func TestRegistry_AllocateAndFind(t *testing.T) {
 
 func TestRegistry_UsedPorts_MultiPort(t *testing.T) {
 	reg := newTestRegistry(t)
-	reg.Allocate(Allocation{
+	_ = reg.Allocate(Allocation{
 		"project":  "a",
 		"worktree": "/wt/a",
 		"ports":    []any{float64(3010), float64(3011)},
 	})
-	reg.Allocate(Allocation{
+	_ = reg.Allocate(Allocation{
 		"project":  "b",
 		"worktree": "/wt/b",
 		"port":     float64(3020),
@@ -58,7 +58,7 @@ func TestRegistry_UsedPorts_MultiPort(t *testing.T) {
 
 func TestRegistry_UsedPorts_BackwardCompat(t *testing.T) {
 	reg := newTestRegistry(t)
-	reg.Allocate(Allocation{
+	_ = reg.Allocate(Allocation{
 		"project":  "old",
 		"worktree": "/wt/old",
 		"port":     float64(3010),
@@ -72,8 +72,8 @@ func TestRegistry_UsedPorts_BackwardCompat(t *testing.T) {
 
 func TestRegistry_Release(t *testing.T) {
 	reg := newTestRegistry(t)
-	reg.Allocate(Allocation{"worktree": "/wt/x"})
-	reg.Allocate(Allocation{"worktree": "/wt/y"})
+	_ = reg.Allocate(Allocation{"worktree": "/wt/x"})
+	_ = reg.Allocate(Allocation{"worktree": "/wt/y"})
 
 	removed, _ := reg.Release("/wt/x")
 	if !removed {
@@ -90,11 +90,11 @@ func TestRegistry_Release(t *testing.T) {
 func TestRegistry_Prune(t *testing.T) {
 	dir := t.TempDir()
 	existing := filepath.Join(dir, "worktree-a")
-	os.MkdirAll(existing, 0o755)
+	_ = os.MkdirAll(existing, 0o755)
 
 	reg := newTestRegistry(t)
-	reg.Allocate(Allocation{"worktree": existing})
-	reg.Allocate(Allocation{"worktree": "/does/not/exist"})
+	_ = reg.Allocate(Allocation{"worktree": existing})
+	_ = reg.Allocate(Allocation{"worktree": "/does/not/exist"})
 
 	count, _ := reg.Prune()
 	if count != 1 {
@@ -108,8 +108,8 @@ func TestRegistry_Prune(t *testing.T) {
 
 func TestRegistry_AllocateReplaces(t *testing.T) {
 	reg := newTestRegistry(t)
-	reg.Allocate(Allocation{"worktree": "/wt/a", "port": float64(3010)})
-	reg.Allocate(Allocation{"worktree": "/wt/a", "port": float64(3020)})
+	_ = reg.Allocate(Allocation{"worktree": "/wt/a", "port": float64(3010)})
+	_ = reg.Allocate(Allocation{"worktree": "/wt/a", "port": float64(3020)})
 
 	allocs := reg.Allocations()
 	if len(allocs) != 1 {
@@ -122,7 +122,7 @@ func TestRegistry_AllocateReplaces(t *testing.T) {
 
 func TestRegistry_PruneStale_RemovesMissingDirs(t *testing.T) {
 	reg := newTestRegistry(t)
-	reg.Allocate(Allocation{"worktree": "/does/not/exist/at/all"})
+	_ = reg.Allocate(Allocation{"worktree": "/does/not/exist/at/all"})
 
 	count, err := reg.PruneStale()
 	if err != nil {

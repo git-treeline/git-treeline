@@ -18,18 +18,18 @@ func testAllocator(t *testing.T, portsNeeded int, yamlExtra string) (*Allocator,
 	reg := registry.New(regPath)
 
 	confPath := filepath.Join(dir, "config.json")
-	os.WriteFile(confPath, []byte(`{"port":{"base":3000,"increment":10},"redis":{"strategy":"prefixed","url":"redis://localhost:6379"}}`), 0o644)
+	_ = os.WriteFile(confPath, []byte(`{"port":{"base":3000,"increment":10},"redis":{"strategy":"prefixed","url":"redis://localhost:6379"}}`), 0o644)
 	uc := config.LoadUserConfig(confPath)
 
 	projDir := filepath.Join(dir, "project")
-	os.MkdirAll(projDir, 0o755)
+	_ = os.MkdirAll(projDir, 0o755)
 	yml := "project: test\n"
 	if portsNeeded > 0 {
 		yml += "ports_needed: " + itoa(portsNeeded) + "\n"
 	}
 	yml += "database:\n  adapter: postgresql\n  template: test_dev\n  pattern: \"{template}_{worktree}\"\n"
 	yml += yamlExtra
-	os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte(yml), 0o644)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte(yml), 0o644)
 	pc := config.LoadProjectConfig(projDir)
 
 	return New(uc, pc, reg), reg
@@ -77,7 +77,7 @@ func TestAllocate_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg.Allocate(first.ToRegistryEntry())
+	_ = reg.Allocate(first.ToRegistryEntry())
 
 	second, err := al.Allocate("/wt/branch-a", "branch-a")
 	if err != nil {
@@ -95,7 +95,7 @@ func TestAllocate_IdempotentPreservesAllFields(t *testing.T) {
 	al, reg := testAllocator(t, 2, "")
 
 	first, _ := al.Allocate("/wt/branch-a", "branch-a")
-	reg.Allocate(first.ToRegistryEntry())
+	_ = reg.Allocate(first.ToRegistryEntry())
 
 	second, _ := al.Allocate("/wt/branch-a", "branch-a")
 	if second.Database != first.Database {
@@ -111,7 +111,7 @@ func TestAllocate_IdempotentPreservesAllFields(t *testing.T) {
 
 func TestAllocate_SkipsUsedPorts(t *testing.T) {
 	al, reg := testAllocator(t, 1, "")
-	reg.Allocate(registry.Allocation{
+	_ = reg.Allocate(registry.Allocation{
 		"worktree": "/wt/existing",
 		"port":     float64(3010),
 		"ports":    []any{float64(3010)},
@@ -128,7 +128,7 @@ func TestAllocate_SkipsUsedPorts(t *testing.T) {
 
 func TestAllocate_MultiPort_NonOverlapping(t *testing.T) {
 	al, reg := testAllocator(t, 2, "")
-	reg.Allocate(registry.Allocation{
+	_ = reg.Allocate(registry.Allocation{
 		"worktree": "/wt/existing",
 		"port":     float64(3010),
 		"ports":    []any{float64(3010), float64(3011)},
@@ -151,12 +151,12 @@ func TestAllocate_PortsNeededExceedsIncrement(t *testing.T) {
 	reg := registry.New(regPath)
 
 	confPath := filepath.Join(dir, "config.json")
-	os.WriteFile(confPath, []byte(`{"port":{"base":3000,"increment":2}}`), 0o644)
+	_ = os.WriteFile(confPath, []byte(`{"port":{"base":3000,"increment":2}}`), 0o644)
 	uc := config.LoadUserConfig(confPath)
 
 	projDir := filepath.Join(dir, "project")
-	os.MkdirAll(projDir, 0o755)
-	os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: test\nports_needed: 5\n"), 0o644)
+	_ = os.MkdirAll(projDir, 0o755)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: test\nports_needed: 5\n"), 0o644)
 	pc := config.LoadProjectConfig(projDir)
 
 	al := New(uc, pc, reg)
@@ -194,12 +194,12 @@ func TestAllocate_RedisDatabaseStrategy(t *testing.T) {
 	reg := registry.New(regPath)
 
 	confPath := filepath.Join(dir, "config.json")
-	os.WriteFile(confPath, []byte(`{"port":{"base":3000,"increment":10},"redis":{"strategy":"database","url":"redis://localhost:6379"}}`), 0o644)
+	_ = os.WriteFile(confPath, []byte(`{"port":{"base":3000,"increment":10},"redis":{"strategy":"database","url":"redis://localhost:6379"}}`), 0o644)
 	uc := config.LoadUserConfig(confPath)
 
 	projDir := filepath.Join(dir, "project")
-	os.MkdirAll(projDir, 0o755)
-	os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: test\ndatabase:\n  adapter: postgresql\n  template: test_dev\n  pattern: \"{template}_{worktree}\"\n"), 0o644)
+	_ = os.MkdirAll(projDir, 0o755)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: test\ndatabase:\n  adapter: postgresql\n  template: test_dev\n  pattern: \"{template}_{worktree}\"\n"), 0o644)
 	pc := config.LoadProjectConfig(projDir)
 
 	al := New(uc, pc, reg)
@@ -226,7 +226,7 @@ func TestToRegistryEntry_Format(t *testing.T) {
 	entry := alloc.ToRegistryEntry()
 	raw, _ := json.Marshal(entry)
 	var parsed map[string]any
-	json.Unmarshal(raw, &parsed)
+	_ = json.Unmarshal(raw, &parsed)
 
 	if parsed["project"] != "salt" {
 		t.Errorf("expected salt, got %v", parsed["project"])
