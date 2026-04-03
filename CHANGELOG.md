@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.9.1]
+
+- Harden codebase: fix potential panic in port allocation, consolidate helper functions, add godoc
+
 ## [0.9.0]
 
 - Add `prune --merged`: detect and release allocations for worktrees on branches merged to main
