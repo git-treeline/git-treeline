@@ -79,7 +79,7 @@ cd ../myapp-feature-auth
 gtl start
 ```
 
-`gtl start` runs the `start_command` from `.treeline.yml` under a lightweight supervisor. Your server runs in your terminal with full log output — exactly like running `bin/dev` directly. The difference: AI agents and scripts can now control your server without taking over your terminal.
+`gtl start` runs the `commands.start` from `.treeline.yml` under a lightweight supervisor. Your server runs in your terminal with full log output — exactly like running `bin/dev` directly. The difference: AI agents and scripts can now control your server without taking over your terminal.
 
 ```bash
 gtl stop       # stops the server — supervisor stays alive, ready to resume
@@ -162,12 +162,13 @@ gtl config edit                      # open in $EDITOR
 
 ## Port-dependent data
 
-If your app stores URLs that include the port (e.g., OAuth redirect URIs, webhook endpoints), the cloned database will have stale values pointing to the wrong port. Use `setup_commands` to patch them — setup commands run after the env file is written, so `PORT` is available:
+If your app stores URLs that include the port (e.g., OAuth redirect URIs, webhook endpoints), the cloned database will have stale values pointing to the wrong port. Use `commands.setup` to patch them — setup commands run after the env file is written, so `PORT` is available:
 
 ```yaml
-setup_commands:
-  - bundle install --quiet
-  - bin/rails runner "Doorkeeper::Application.update_all(redirect_uri: 'http://localhost:' + ENV['PORT'] + '/oauth/callback')"
+commands:
+  setup:
+    - bundle install --quiet
+    - bin/rails runner "Doorkeeper::Application.update_all(redirect_uri: 'http://localhost:' + ENV['PORT'] + '/oauth/callback')"
 ```
 
 This runs on every `gtl setup`, including re-setup after a release/re-allocation.
@@ -189,10 +190,10 @@ env:
   PORT: "{port}"
   NEXT_PUBLIC_APP_URL: "http://localhost:{port}"
 
-setup_commands:
-  - npm install
-
-start_command: npm run dev
+commands:
+  setup:
+    - npm install
+  start: npm run dev
 ```
 
 Next.js loads `.env.local` into `process.env` for your app code, but the dev server **does not** use `PORT` for its listen port. Update your `package.json` dev script:
@@ -222,11 +223,11 @@ database:
   template: myapp_development
   pattern: "{template}_{worktree}"
 
-setup_commands:
-  - npm install
-  - npx prisma migrate deploy
-
-start_command: npm run dev
+commands:
+  setup:
+    - npm install
+    - npx prisma migrate deploy
+  start: npm run dev
 ```
 
 ### Node.js / Express
@@ -241,10 +242,10 @@ env_file:
 env:
   PORT: "{port}"
 
-setup_commands:
-  - npm install
-
-start_command: node server.js
+commands:
+  setup:
+    - npm install
+  start: node server.js
 ```
 
 ### Rails
@@ -273,11 +274,11 @@ env:
   ESBUILD_PORT: "{port_2}"
   APPLICATION_HOST: "localhost:{port}"
 
-setup_commands:
-  - bundle install --quiet
-  - yarn install --silent
-
-start_command: bin/dev
+commands:
+  setup:
+    - bundle install --quiet
+    - yarn install --silent
+  start: bin/dev
 ```
 
 Rails apps using `dotenv-rails` (most do) will load the env file automatically at boot. No additional gems needed.
@@ -294,8 +295,9 @@ env_file:
 env:
   PORT: "{port}"
 
-setup_commands:
-  - npm install
+commands:
+  setup:
+    - npm install
 ```
 
 ## Configuration
@@ -341,8 +343,8 @@ See [Framework examples](#framework-examples) for complete examples. Available f
 | `database.pattern` | Naming pattern — `{template}_{worktree}` |
 | `copy_files` | Files copied from main repo to worktree |
 | `env` | Key-value pairs written to the env file, with token interpolation |
-| `setup_commands` | Shell commands run in the worktree after setup |
-| `start_command` | Whatever you'd type to boot the app — `bin/dev`, `npm run dev`, `foreman start`, etc. (used by `gtl start` and `--start` on `new`/`review`) |
+| `commands.setup` | Shell commands run in the worktree after setup |
+| `commands.start` | Whatever you'd type to boot the app — `bin/dev`, `npm run dev`, `foreman start`, etc. (used by `gtl start` and `--start` on `new`/`review`) |
 | `editor.vscode_title` | VS Code window title template |
 
 ### Interpolation tokens
@@ -367,7 +369,7 @@ If your project uses PostgreSQL or SQLite, Treeline can clone your development d
 
 **SQLite** clones by copying the database file. Set `database.adapter: sqlite` and `database.template` to the path of your SQLite database.
 
-Set `database.template` in your `.treeline.yml` to enable cloning. Omit it entirely if your project doesn't need database isolation, or if you use migrations instead (e.g. `npx prisma migrate deploy` in `setup_commands`).
+Set `database.template` in your `.treeline.yml` to enable cloning. Omit it entirely if your project doesn't need database isolation, or if you use migrations instead (e.g. `npx prisma migrate deploy` in `commands.setup`).
 
 Use `--drop-db` with `gtl release` to clean up cloned databases.
 
@@ -437,7 +439,7 @@ This returns the full registry as JSON — allocated ports, databases, Redis nam
 | `gtl release [PATH]` | `--drop-db` `--project` `--all` `--force`/`-f` `--dry-run` | Free allocated resources (single, by project, or all) |
 | `gtl status` | `--project` `--json` `--check` `--watch` `--interval` | Show allocations across projects |
 | `gtl prune` | `--stale` `--merged` `--drop-db` `--force` | Remove orphaned allocations |
-| `gtl start` | | Run `start_command` under supervisor (or resume a stopped server) |
+| `gtl start` | | Run `commands.start` under supervisor (or resume a stopped server) |
 | `gtl stop` | | Stop the server process (supervisor stays alive) |
 | `gtl restart` | | Restart the server process in the original terminal |
 | `gtl config` | | Show or initialize user-level config |

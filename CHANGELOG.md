@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+## [0.17.0]
+
+### Breaking
+
+- `setup_commands` → `commands.setup` and `start_command` → `commands.start` in `.treeline.yml`
+- Auto-migration: existing configs with old keys are rewritten on first load — no manual cleanup needed
+- Generated templates now include `commands.start` per framework (Next.js, Rails, Node, Python)
+
 ## [0.16.0]
 
 - `gtl start` / `gtl stop` / `gtl restart` — supervised dev server

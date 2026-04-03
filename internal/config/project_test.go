@@ -40,9 +40,11 @@ env:
   PORT: "{port}"
   DATABASE_NAME: "{database}"
   ESBUILD_PORT: "{port_2}"
-setup_commands:
-  - bundle install --quiet
-  - yarn install --silent
+commands:
+  setup:
+    - bundle install --quiet
+    - yarn install --silent
+  start: bin/dev
 editor:
   vscode_title: '{project} (:{port})'
 `
@@ -68,6 +70,9 @@ editor:
 	cmds := pc.SetupCommands()
 	if len(cmds) != 2 {
 		t.Errorf("expected 2 setup commands, got %d", len(cmds))
+	}
+	if pc.StartCommand() != "bin/dev" {
+		t.Errorf("expected bin/dev, got %s", pc.StartCommand())
 	}
 	editor := pc.Editor()
 	if editor["vscode_title"] != "{project} (:{port})" {
@@ -118,6 +123,40 @@ func TestProjectConfig_MigrateDefaultBranch_NoClobber(t *testing.T) {
 	pc := LoadProjectConfig(dir)
 	if pc.MergeTarget() != "production" {
 		t.Errorf("expected existing merge_target to be preserved, got %s", pc.MergeTarget())
+	}
+}
+
+func TestProjectConfig_MigrateCommands(t *testing.T) {
+	dir := t.TempDir()
+	yml := `project: myapp
+setup_commands:
+  - bundle install
+  - yarn install
+start_command: bin/dev
+`
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+
+	cmds := pc.SetupCommands()
+	if len(cmds) != 2 || cmds[0] != "bundle install" {
+		t.Errorf("expected migrated setup commands, got %v", cmds)
+	}
+	if pc.StartCommand() != "bin/dev" {
+		t.Errorf("expected bin/dev, got %s", pc.StartCommand())
+	}
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if strings.Contains(content, "setup_commands") {
+		t.Error("expected setup_commands to be removed from file")
+	}
+	if strings.Contains(content, "start_command") {
+		t.Error("expected start_command to be removed from file")
+	}
+	if !strings.Contains(content, "commands:") {
+		t.Error("expected commands: block in file")
 	}
 }
 

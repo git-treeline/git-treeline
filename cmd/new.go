@@ -20,7 +20,7 @@ var newDryRun bool
 func init() {
 	newCmd.Flags().StringVar(&newBase, "base", "", "Base branch for the new worktree (default: current branch)")
 	newCmd.Flags().StringVar(&newPath, "path", "", "Custom worktree path (default: ../<project>-<branch>)")
-	newCmd.Flags().BoolVar(&newStart, "start", false, "Run start_command after setup")
+	newCmd.Flags().BoolVar(&newStart, "start", false, "Run commands.start after setup")
 	newCmd.Flags().BoolVar(&newDryRun, "dry-run", false, "Print what would happen without making changes")
 	rootCmd.AddCommand(newCmd)
 }
@@ -108,7 +108,7 @@ Otherwise a new branch is created from --base (or the current branch).`,
 		if newStart {
 			startCmd := pc.StartCommand()
 			if startCmd == "" {
-				fmt.Println("Warning: --start passed but no start_command configured in .treeline.yml")
+				fmt.Println("Warning: --start passed but no commands.start configured in .treeline.yml")
 				return nil
 			}
 			fmt.Printf("==> Starting: %s\n", startCmd)

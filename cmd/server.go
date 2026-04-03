@@ -21,7 +21,7 @@ func init() {
 var startCmd = &cobra.Command{
 	Use:   "start",
 	Short: "Start the dev server with a supervised process",
-	Long: `Run the start_command from .treeline.yml under a lightweight supervisor.
+	Long: `Run the commands.start from .treeline.yml under a lightweight supervisor.
 The server runs in your terminal with full log output. Other processes
 (AI agents, scripts) can restart or stop it via 'gtl restart' and 'gtl stop'
 without interrupting your terminal session.
@@ -39,7 +39,7 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 
 		startCommand := pc.StartCommand()
 		if startCommand == "" {
-			return fmt.Errorf("no start_command configured in .treeline.yml")
+			return fmt.Errorf("no commands.start configured in .treeline.yml")
 		}
 
 		sockPath := supervisor.SocketPath(absPath)

@@ -20,7 +20,7 @@ var reviewStart bool
 
 func init() {
 	reviewCmd.Flags().StringVar(&reviewPath, "path", "", "Custom worktree path (default: ../<project>-pr-<number>)")
-	reviewCmd.Flags().BoolVar(&reviewStart, "start", false, "Run start_command after setup")
+	reviewCmd.Flags().BoolVar(&reviewStart, "start", false, "Run commands.start after setup")
 	rootCmd.AddCommand(reviewCmd)
 }
 
@@ -99,7 +99,7 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 		if reviewStart {
 			startCmd := pc.StartCommand()
 			if startCmd == "" {
-				fmt.Println("Warning: --start passed but no start_command configured in .treeline.yml")
+				fmt.Println("Warning: --start passed but no commands.start configured in .treeline.yml")
 				return nil
 			}
 			fmt.Printf("==> Starting: %s\n", startCmd)

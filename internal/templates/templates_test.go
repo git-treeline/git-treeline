@@ -20,9 +20,12 @@ func TestForDetection_NextJS(t *testing.T) {
 	assertValidYAML(t, content)
 	assertContains(t, content, "project: myapp")
 	assertContains(t, content, `PORT: "{port}"`)
+	assertContains(t, content, "commands:")
 	assertContains(t, content, "npm install")
+	assertContains(t, content, "start: npm run dev")
 	assertContains(t, content, ".env.local")
 	assertNotContains(t, content, "bundle install")
+	assertNotContains(t, content, "setup_commands")
 }
 
 func TestForDetection_NextJS_Prisma(t *testing.T) {
@@ -57,12 +60,15 @@ func TestForDetection_Rails_PostgreSQL(t *testing.T) {
 
 	assertValidYAML(t, content)
 	assertContains(t, content, "adapter: postgresql")
+	assertContains(t, content, "commands:")
 	assertContains(t, content, "bundle install")
+	assertContains(t, content, "start: bin/dev")
 	assertContains(t, content, `REDIS_URL: "{redis_url}"`)
 	assertContains(t, content, "ports_needed: 2")
 	assertContains(t, content, `ESBUILD_PORT: "{port_2}"`)
 	assertContains(t, content, "yarn install")
 	assertContains(t, content, "config/master.key")
+	assertNotContains(t, content, "setup_commands")
 }
 
 func TestForDetection_Rails_NoBundler(t *testing.T) {
@@ -111,8 +117,11 @@ func TestForDetection_Node(t *testing.T) {
 	assertValidYAML(t, content)
 	assertContains(t, content, "project: myapi")
 	assertContains(t, content, `PORT: "{port}"`)
+	assertContains(t, content, "commands:")
 	assertContains(t, content, "npm install")
+	assertContains(t, content, "start: npm run dev")
 	assertNotContains(t, content, "database")
+	assertNotContains(t, content, "setup_commands")
 }
 
 func TestForDetection_Node_NoEnvFile(t *testing.T) {
@@ -141,7 +150,10 @@ func TestForDetection_Python(t *testing.T) {
 	content := ForDetection("myapp", "", det)
 
 	assertValidYAML(t, content)
+	assertContains(t, content, "commands:")
 	assertContains(t, content, "pip install")
+	assertContains(t, content, "start: python manage.py runserver")
+	assertNotContains(t, content, "setup_commands")
 }
 
 func TestForDetection_Generic(t *testing.T) {

@@ -314,8 +314,9 @@ env_file:
   source: .env.local
 env:
   PORT: "{port}"
-setup_commands:
-  - touch should_not_exist
+commands:
+  setup:
+    - touch should_not_exist
 `)
 	_ = os.WriteFile(filepath.Join(mainRepo, ".env.local"), []byte(""), 0o644)
 
@@ -358,8 +359,9 @@ env_file:
   source: .env.local
 env:
   PORT: "{port}"
-setup_commands:
-  - "exit 1"
+commands:
+  setup:
+    - "exit 1"
 `)
 	_ = os.WriteFile(filepath.Join(mainRepo, ".env.local"), []byte(""), 0o644)
 
@@ -424,8 +426,9 @@ env:
   APP_URL: "http://localhost:{port}"
 copy_files:
   - config/master.key
-setup_commands:
-  - touch setup_ran
+commands:
+  setup:
+    - touch setup_ran
 `)
 	_ = os.WriteFile(filepath.Join(mainRepo, ".env.local"), []byte("BASE=value\n"), 0o644)
 	_ = os.MkdirAll(filepath.Join(mainRepo, "config"), 0o755)

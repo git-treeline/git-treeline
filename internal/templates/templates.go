@@ -56,11 +56,13 @@ func nextJS(project, templateDB string, det *detect.Result) string {
 		}
 	}
 
-	b.WriteString("\nsetup_commands:\n")
-	fmt.Fprintf(&b, "  - %s\n", installCmd(det))
+	b.WriteString("\ncommands:\n")
+	b.WriteString("  setup:\n")
+	fmt.Fprintf(&b, "    - %s\n", installCmd(det))
 	if det.HasPrisma {
-		b.WriteString("  - npx prisma migrate deploy\n")
+		b.WriteString("    - npx prisma migrate deploy\n")
 	}
+	writeStartCommand(&b, det)
 
 	return b.String()
 }
@@ -112,11 +114,13 @@ func rails(project, templateDB string, det *detect.Result) string {
 		fmt.Fprintf(&b, "  APPLICATION_HOST: \"localhost:{port}\"\n")
 	}
 
-	b.WriteString("\nsetup_commands:\n")
-	b.WriteString("  - bundle install --quiet\n")
+	b.WriteString("\ncommands:\n")
+	b.WriteString("  setup:\n")
+	b.WriteString("    - bundle install --quiet\n")
 	if det.HasJSBundler {
-		b.WriteString("  - yarn install --silent\n")
+		b.WriteString("    - yarn install --silent\n")
 	}
+	b.WriteString("  start: bin/dev\n")
 
 	b.WriteString("\neditor:\n")
 	b.WriteString("  vscode_title: '{project} (:{port}) — {branch} — ${activeEditorShort}'\n")
@@ -135,8 +139,10 @@ func node(project string, det *detect.Result) string {
 		b.WriteString("  PORT: \"{port}\"\n")
 	}
 
-	b.WriteString("\nsetup_commands:\n")
-	fmt.Fprintf(&b, "  - %s\n", installCmd(det))
+	b.WriteString("\ncommands:\n")
+	b.WriteString("  setup:\n")
+	fmt.Fprintf(&b, "    - %s\n", installCmd(det))
+	writeStartCommand(&b, det)
 	return b.String()
 }
 
@@ -151,8 +157,10 @@ func python(project string, det *detect.Result) string {
 		b.WriteString("  PORT: \"{port}\"\n")
 	}
 
-	b.WriteString("\nsetup_commands:\n")
-	b.WriteString("  - pip install -r requirements.txt\n")
+	b.WriteString("\ncommands:\n")
+	b.WriteString("  setup:\n")
+	b.WriteString("    - pip install -r requirements.txt\n")
+	writeStartCommand(&b, det)
 	return b.String()
 }
 
@@ -174,6 +182,38 @@ func writeEnvFileBlock(b *strings.Builder, envFile string) {
 	b.WriteString("\nenv_file:\n")
 	fmt.Fprintf(b, "  target: %s\n", envFile)
 	fmt.Fprintf(b, "  source: %s\n", envFile)
+}
+
+func writeStartCommand(b *strings.Builder, det *detect.Result) {
+	if cmd := startCommandFor(det); cmd != "" {
+		fmt.Fprintf(b, "  start: %s\n", cmd)
+	}
+}
+
+func startCommandFor(det *detect.Result) string {
+	switch det.Framework {
+	case "nextjs":
+		return runCmd(det) + " dev"
+	case "rails":
+		return "" // already emitted inline for rails (bin/dev)
+	case "node":
+		return runCmd(det) + " dev"
+	case "django", "python":
+		return "python manage.py runserver 0.0.0.0:${PORT:-8000}"
+	default:
+		return ""
+	}
+}
+
+func runCmd(det *detect.Result) string {
+	switch det.PackageManager {
+	case "yarn":
+		return "yarn"
+	case "pnpm":
+		return "pnpm"
+	default:
+		return "npm run"
+	}
 }
 
 func writeMergeTarget(b *strings.Builder, det *detect.Result) {
