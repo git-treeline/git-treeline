@@ -388,4 +388,4 @@ This returns the full registry as JSON — allocated ports, databases, Redis nam
 
 ## License
 
-Apache License 2.0 — see [LICENSE.txt](LICENSE.txt).
+MIT License — see [LICENSE.txt](LICENSE.txt).
