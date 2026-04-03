@@ -50,6 +50,11 @@ Otherwise a new branch is created from --base (or the current branch).`,
 			wtPath = filepath.Join(filepath.Dir(mainRepo), fmt.Sprintf("%s-%s", projectName, branch))
 		}
 
+		// Check if this branch is already checked out in another worktree
+		if existingWT := worktree.FindWorktreeForBranch(branch); existingWT != "" {
+			return fmt.Errorf("branch '%s' is already checked out at %s\nUse 'git-treeline setup %s' to re-run setup on it", branch, existingWT, existingWT)
+		}
+
 		existing := worktree.BranchExists(branch)
 
 		if newDryRun {

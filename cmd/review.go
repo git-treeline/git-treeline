@@ -8,6 +8,7 @@ import (
 
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/github"
+	"github.com/git-treeline/git-treeline/internal/registry"
 	"github.com/git-treeline/git-treeline/internal/setup"
 	"github.com/git-treeline/git-treeline/internal/worktree"
 	"github.com/spf13/cobra"
@@ -56,9 +57,21 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 			wtPath = filepath.Join(filepath.Dir(mainRepo), fmt.Sprintf("%s-pr-%d", projectName, prNumber))
 		}
 
+		// Check if this branch is already checked out in a worktree
+		if existing := worktree.FindWorktreeForBranch(branch); existing != "" {
+			fmt.Printf("==> Branch '%s' already checked out at %s\n", branch, existing)
+			reg := registry.New("")
+			if alloc := reg.Find(existing); alloc != nil {
+				printExistingAllocation(prNumber, branch, existing, alloc)
+			} else {
+				fmt.Printf("\nPR #%d worktree exists at %s (no allocation found)\n", prNumber, existing)
+			}
+			return nil
+		}
+
 		fmt.Printf("==> Fetching origin/%s...\n", branch)
 		if err := worktree.Fetch("origin", branch); err != nil {
-			return err
+			return fmt.Errorf("branch '%s' not found on remote (PR may be merged with branch deleted)", branch)
 		}
 
 		fmt.Printf("==> Creating worktree at %s\n", wtPath)
@@ -94,4 +107,16 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 
 		return nil
 	},
+}
+
+func printExistingAllocation(prNumber int, branch, path string, alloc registry.Allocation) {
+	ports := getPorts(alloc)
+	fmt.Println()
+	fmt.Printf("PR #%d already has a worktree:\n", prNumber)
+	fmt.Printf("  Branch:   %s\n", branch)
+	fmt.Printf("  Path:     %s\n", path)
+	if len(ports) > 0 {
+		fmt.Printf("  Port:     %s\n", joinInts(ports, ", "))
+		fmt.Printf("  URL:      http://localhost:%d\n", ports[0])
+	}
 }

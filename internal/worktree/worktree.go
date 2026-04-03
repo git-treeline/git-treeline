@@ -57,6 +57,27 @@ func Fetch(remote, branch string) error {
 	return nil
 }
 
+// FindWorktreeForBranch returns the path of an existing worktree that has
+// the given branch checked out, or empty string if none.
+func FindWorktreeForBranch(branch string) string {
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	var currentPath string
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, "worktree ") {
+			currentPath = strings.TrimPrefix(line, "worktree ")
+		}
+		if strings.HasPrefix(line, "branch refs/heads/"+branch) {
+			return currentPath
+		}
+	}
+	return ""
+}
+
 // DetectMainRepo returns the root worktree path (the main repo) by parsing
 // `git worktree list --porcelain`. Falls back to the given path.
 func DetectMainRepo(worktreePath string) string {
