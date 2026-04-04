@@ -294,6 +294,35 @@ func TestAllocate_MainWorktreeSkipsOccupiedPorts(t *testing.T) {
 	}
 }
 
+func TestReuseExisting_PortCountMismatch(t *testing.T) {
+	al, reg := testAllocator(t, 2, "")
+
+	alloc, err := al.Allocate("/tmp/wt-ports-test", "wt-test", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(alloc.Ports) != 2 {
+		t.Fatalf("expected 2 ports, got %d", len(alloc.Ports))
+	}
+	_ = reg.Allocate(alloc.ToRegistryEntry())
+
+	// Now create a new allocator with ports_needed: 1 (config changed)
+	al2, _ := testAllocator(t, 1, "")
+	// Point it at the same registry
+	al2.Registry = reg
+
+	alloc2, err := al2.Allocate("/tmp/wt-ports-test", "wt-test", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(alloc2.Ports) != 1 {
+		t.Errorf("expected 1 port after config change, got %d: %v", len(alloc2.Ports), alloc2.Ports)
+	}
+	if alloc2.Reused {
+		t.Error("expected fresh allocation, not reuse")
+	}
+}
+
 func TestIsPortFree(t *testing.T) {
 	if !IsPortFree(49999) {
 		t.Skip("port 49999 is in use, skipping")

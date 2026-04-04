@@ -136,6 +136,10 @@ func (al *Allocator) reuseExisting(worktreePath, worktreeName string) *Allocatio
 		alloc.RedisDB = int(db)
 	}
 
+	if len(alloc.Ports) != al.ProjectConfig.PortsNeeded() {
+		return nil
+	}
+
 	return alloc
 }
 

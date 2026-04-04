@@ -84,7 +84,6 @@ Otherwise a new branch is created from --base (or the current branch).`,
 		if existing {
 			if err := worktree.Fetch("origin", branch); err != nil {
 				// Non-fatal: branch may only exist locally
-				_ = err
 			}
 			fmt.Printf("==> Checking out existing branch '%s'\n", branch)
 			if err := worktree.Create(wtPath, branch, false, ""); err != nil {

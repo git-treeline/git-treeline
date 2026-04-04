@@ -34,14 +34,16 @@ func nextJS(project, templateDB string, det *detect.Result) string {
 	fmt.Fprintf(&b, "project: %s\n", project)
 	writeMergeTarget(&b, det)
 
+	if !(det.HasPrisma && det.DBAdapter == "postgresql") {
+		b.WriteString("\n# database:\n")
+		b.WriteString("#   adapter: postgresql\n")
+		fmt.Fprintf(&b, "#   template: %s\n", templateDB)
+		b.WriteString("#   pattern: \"{template}_{worktree}\"\n")
+	}
+
 	emit := shouldEmitEnv(det)
 	if emit {
 		writeEnvFileBlock(&b, envTarget(det))
-	}
-
-	envVars := map[string]string{
-		"PORT":                `"{port}"`,
-		"NEXT_PUBLIC_APP_URL": `"http://localhost:{port}"`,
 	}
 
 	if det.HasPrisma && det.DBAdapter == "postgresql" {
@@ -49,14 +51,15 @@ func nextJS(project, templateDB string, det *detect.Result) string {
 		fmt.Fprintf(&b, "  adapter: postgresql\n")
 		fmt.Fprintf(&b, "  template: %s\n", templateDB)
 		fmt.Fprintf(&b, "  pattern: \"{template}_{worktree}\"\n")
-		envVars["DATABASE_URL"] = `"postgresql://localhost:5432/{database}"`
 	}
 
 	if emit {
 		b.WriteString("\nenv:\n")
-		for k, v := range envVars {
-			fmt.Fprintf(&b, "  %s: %s\n", k, v)
+		fmt.Fprintf(&b, "  PORT: \"{port}\"\n")
+		if det.HasPrisma && det.DBAdapter == "postgresql" {
+			fmt.Fprintf(&b, "  DATABASE_URL: \"postgresql://localhost:5432/{database}\"\n")
 		}
+		b.WriteString(`  # NEXT_PUBLIC_APP_URL: "http://localhost:{port}"` + "\n")
 	}
 
 	b.WriteString("\ncommands:\n")
@@ -67,6 +70,7 @@ func nextJS(project, templateDB string, det *detect.Result) string {
 	}
 	writeStartCommand(&b, det)
 
+	writeEditorComment(&b)
 	return b.String()
 }
 
@@ -75,7 +79,7 @@ func rails(project, templateDB string, det *detect.Result) string {
 	fmt.Fprintf(&b, "project: %s\n", project)
 	writeMergeTarget(&b, det)
 	if det.HasJSBundler {
-		b.WriteString("ports_needed: 2\n")
+		b.WriteString("# ports_needed: 2                  # uncomment if JS bundler needs its own port\n")
 	}
 
 	emit := shouldEmitEnv(det)
@@ -111,11 +115,13 @@ func rails(project, templateDB string, det *detect.Result) string {
 		}
 		if det.HasRedis {
 			fmt.Fprintf(&b, "  REDIS_URL: \"{redis_url}\"\n")
+		} else {
+			b.WriteString(`  # REDIS_URL: "{redis_url}"` + "\n")
 		}
 		if det.HasJSBundler {
-			fmt.Fprintf(&b, "  ESBUILD_PORT: \"{port_2}\"\n")
+			b.WriteString(`  # ESBUILD_PORT: "{port_2}"       # requires ports_needed: 2` + "\n")
 		}
-		fmt.Fprintf(&b, "  APPLICATION_HOST: \"localhost:{port}\"\n")
+		b.WriteString(`  # APPLICATION_HOST: "localhost:{port}"` + "\n")
 	}
 
 	b.WriteString("\ncommands:\n")
@@ -126,9 +132,11 @@ func rails(project, templateDB string, det *detect.Result) string {
 	}
 	b.WriteString("  start: bin/dev\n")
 
-	b.WriteString("\neditor:\n")
-	b.WriteString("  vscode_title: '{project} (:{port}) — {branch} — ${activeEditorShort}'\n")
+	if det.MergeTarget == "" {
+		b.WriteString("\n# merge_target: develop            # branch that prune --merged checks against\n")
+	}
 
+	writeEditorComment(&b)
 	return b.String()
 }
 
@@ -146,6 +154,7 @@ func vite(project string, det *detect.Result) string {
 	fmt.Fprintf(&b, "    - %s\n", installCmd(det))
 	b.WriteString("  start: npx vite\n")
 
+	writeEditorComment(&b)
 	return b.String()
 }
 
@@ -164,6 +173,10 @@ func node(project string, det *detect.Result) string {
 	b.WriteString("  setup:\n")
 	fmt.Fprintf(&b, "    - %s\n", installCmd(det))
 	writeStartCommand(&b, det)
+	if shouldEmitEnv(det) && !det.HasDotenv {
+		b.WriteString("\n# Note: ensure dotenv or similar is installed to auto-load this file\n")
+	}
+	writeEditorComment(&b)
 	return b.String()
 }
 
@@ -176,12 +189,16 @@ func python(project string, det *detect.Result) string {
 		writeEnvFileBlock(&b, envTarget(det))
 		b.WriteString("\nenv:\n")
 		b.WriteString("  PORT: \"{port}\"\n")
+		if det.DBAdapter == "" && !det.HasPrisma {
+			b.WriteString(`  # DATABASE_URL: "postgresql://localhost:5432/{database}"` + "\n")
+		}
 	}
 
 	b.WriteString("\ncommands:\n")
 	b.WriteString("  setup:\n")
 	b.WriteString("    - pip install -r requirements.txt\n")
 	writeStartCommand(&b, det)
+	writeEditorComment(&b)
 	return b.String()
 }
 
@@ -196,7 +213,13 @@ func generic(project string, det *detect.Result) string {
 		b.WriteString("  PORT: \"{port}\"\n")
 	}
 
+	writeEditorComment(&b)
 	return b.String()
+}
+
+func writeEditorComment(b *strings.Builder) {
+	b.WriteString("\n# editor:\n")
+	b.WriteString("#   vscode_title: '{project} (:{port}) — {branch}'\n")
 }
 
 func writeEnvFileBlock(b *strings.Builder, envFile string) {

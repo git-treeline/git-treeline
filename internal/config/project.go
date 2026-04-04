@@ -13,10 +13,7 @@ const ProjectConfigFile = ".treeline.yml"
 
 var ProjectDefaults = map[string]any{
 	"ports_needed": 1,
-	"env_file": map[string]any{
-		"target": ".env.local",
-		"source": ".env.local",
-	},
+	"env_file": ".env.local",
 	"database": map[string]any{
 		"adapter":  "postgresql",
 		"template": nil,
