@@ -219,7 +219,9 @@ func generic(project string, det *detect.Result) string {
 
 func writeEditorComment(b *strings.Builder) {
 	b.WriteString("\n# editor:\n")
-	b.WriteString("#   vscode_title: '{project} (:{port}) — {branch}'\n")
+	b.WriteString("#   title: \"{project} :{port} ({branch})\"  # window title (VS Code, Cursor)\n")
+	b.WriteString("#   color: auto                             # title/status bar color (\"auto\" = branch hash, or hex like \"#1a5276\")\n")
+	b.WriteString("#   theme: \"\"                               # full IDE theme override (e.g. \"Monokai\", \"GitHub Dark\")\n")
 }
 
 func writeEnvFileBlock(b *strings.Builder, envFile string) {

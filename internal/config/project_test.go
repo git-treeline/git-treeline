@@ -75,8 +75,8 @@ editor:
 		t.Errorf("expected bin/dev, got %s", pc.StartCommand())
 	}
 	editor := pc.Editor()
-	if editor["vscode_title"] != "{project} (:{port})" {
-		t.Errorf("unexpected editor title: %s", editor["vscode_title"])
+	if editor["title"] != "{project} (:{port})" {
+		t.Errorf("unexpected editor title: %s", editor["title"])
 	}
 }
 
@@ -276,6 +276,95 @@ func TestEnvFile_Migration_AlreadyNewMap(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if string(data) != yml {
 		t.Errorf("file should be unchanged for already-new format, got:\n%s", string(data))
+	}
+}
+
+func TestProjectConfig_MigrateEditor(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\neditor:\n  vscode_title: '{project} (:{port})'\n"
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+
+	if pc.EditorTitle() != "{project} (:{port})" {
+		t.Errorf("expected migrated title, got %s", pc.EditorTitle())
+	}
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if strings.Contains(content, "vscode_title") {
+		t.Error("expected vscode_title to be rewritten as title")
+	}
+	if !strings.Contains(content, "title:") {
+		t.Errorf("expected title: key in file, got:\n%s", content)
+	}
+}
+
+func TestProjectConfig_MigrateEditor_NoClobber(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\neditor:\n  vscode_title: 'old'\n  title: 'new'\n"
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+
+	if pc.EditorTitle() != "new" {
+		t.Errorf("expected existing title preserved, got %s", pc.EditorTitle())
+	}
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if !strings.Contains(content, "vscode_title") {
+		t.Error("vscode_title should NOT be removed when title already exists")
+	}
+}
+
+func TestProjectConfig_MigrateEditor_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\neditor:\n  title: '{project} :{port}'\n"
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	_ = LoadProjectConfig(dir)
+	_ = LoadProjectConfig(dir)
+
+	data, _ := os.ReadFile(path)
+	if string(data) != yml {
+		t.Errorf("file should be unchanged, got:\n%s", string(data))
+	}
+}
+
+func TestProjectConfig_EditorAccessors(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\neditor:\n  title: '{project} :{port}'\n  color: auto\n  theme: Monokai\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+
+	if pc.EditorTitle() != "{project} :{port}" {
+		t.Errorf("unexpected title: %s", pc.EditorTitle())
+	}
+	if pc.EditorColor() != "auto" {
+		t.Errorf("unexpected color: %s", pc.EditorColor())
+	}
+	if pc.EditorTheme() != "Monokai" {
+		t.Errorf("unexpected theme: %s", pc.EditorTheme())
+	}
+}
+
+func TestProjectConfig_EditorAccessors_Empty(t *testing.T) {
+	dir := t.TempDir()
+	pc := LoadProjectConfig(dir)
+
+	if pc.EditorTitle() != "" {
+		t.Errorf("expected empty title, got %s", pc.EditorTitle())
+	}
+	if pc.EditorColor() != "" {
+		t.Errorf("expected empty color, got %s", pc.EditorColor())
+	}
+	if pc.EditorTheme() != "" {
+		t.Errorf("expected empty theme, got %s", pc.EditorTheme())
 	}
 }
 

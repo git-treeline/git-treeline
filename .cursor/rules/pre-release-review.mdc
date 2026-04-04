@@ -1,0 +1,42 @@
+---
+description: Principal-level code review checklist — run before any release is cut
+alwaysApply: false
+---
+
+# Pre-Release Review
+
+Before cutting a release, run this review against all changed files since the last tag.
+
+## 1. Correctness
+- [ ] No dead code or unreachable branches
+- [ ] No silently swallowed errors — log or return every `error`
+- [ ] All function parameters are used (no dead params)
+- [ ] Migrations are idempotent — running twice produces no diff
+- [ ] Edge cases tested: empty input, nil maps, missing keys, invalid formats
+
+## 2. Data Safety
+- [ ] File writes don't destroy existing content (round-trip fidelity)
+- [ ] String-replace migrations won't match unintended content
+- [ ] No PII or secrets in logs, templates, or generated files
+
+## 3. Tests
+- [ ] Every exported function has at least one test
+- [ ] Edge-case coverage: invalid input, boundary values, concurrent access
+- [ ] Migration tests verify both in-memory state AND file-on-disk content
+- [ ] Idempotency tests: run the operation twice, assert no change on second run
+
+## 4. DRY / Clean Code
+- [ ] No copy-paste logic — extract shared helpers
+- [ ] No unnecessary type conversions (e.g. float64 round-trips for int math)
+- [ ] Comments explain *why*, not *what*
+- [ ] Docstrings on all exported types and functions
+
+## 5. CI Gate
+```bash
+make ci   # tests + vet + lint must all pass
+```
+Only pre-existing lint violations are acceptable. New code must be lint-clean.
+
+## 6. Docs
+- [ ] CHANGELOG updated with all user-facing changes
+- [ ] README reflects new config fields, CLI flags, and behaviors

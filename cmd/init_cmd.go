@@ -10,6 +10,7 @@ import (
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/confirm"
 	"github.com/git-treeline/git-treeline/internal/detect"
+	"github.com/git-treeline/git-treeline/internal/editor"
 	"github.com/git-treeline/git-treeline/internal/platform"
 	"github.com/git-treeline/git-treeline/internal/templates"
 	"github.com/git-treeline/git-treeline/internal/worktree"
@@ -107,6 +108,17 @@ var initCmd = &cobra.Command{
 				fmt.Fprintf(os.Stderr, "Warning: failed to write agent context: %s\n", err)
 			} else if agentPath != "" {
 				fmt.Printf("==> Agent context written to %s\n", agentPath)
+			}
+		}
+
+		if uc.EditorName() == "" {
+			if detected := editor.DetectEditor(); detected != "" {
+				uc.SetEditorName(detected)
+				if err := uc.Save(); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to save editor name: %s\n", err)
+				} else if info := editor.LookupEditor(detected); info != nil {
+					fmt.Printf("==> Detected editor: %s\n", info.Display)
+				}
 			}
 		}
 

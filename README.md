@@ -377,9 +377,16 @@ Controls allocation policy for your machine. Created automatically by `gtl init`
   "redis": {
     "strategy": "prefixed",
     "url": "redis://localhost:6379"
+  },
+  "editor": {
+    "name": "cursor",
+    "themes": { "salt": "Monokai" },
+    "colors": { "salt/staging": "#7b241c" }
   }
 }
 ```
+
+**Editor detection:** `gtl init` auto-detects your editor (Cursor, VS Code, Zed, JetBrains) and stores `editor.name`. The menulet uses this for "Open in Editor" labels. If detection fails, no name is stored — override manually with `gtl config set editor.name cursor`. The `themes` and `colors` maps are per-project or per-branch overrides for the `editor.theme` and `editor.color` settings in `.treeline.yml`.
 
 **Port reservations** pin stable ports to specific projects or branches. A project-level key (e.g. `salt`) applies to the main repo. A `project/branch` key (e.g. `salt/staging`) pins a specific branch — useful for long-lived worktrees that need a known port. Branch-specific keys take priority over project-level keys. Reserved ports block the full `port.increment` range and are excluded from the dynamic pool so they never collide.
 
@@ -419,7 +426,9 @@ See [Framework examples](#framework-examples) for complete examples. Available f
 | `env` | Key-value pairs written to the env file, with token interpolation |
 | `commands.setup` | Shell commands run in the worktree after setup |
 | `commands.start` | Whatever you'd type to boot the app — `bin/dev`, `npm run dev`, `foreman start`, etc. (used by `gtl start` and `--start` on `new`/`review`) |
-| `editor.vscode_title` | VS Code window title template |
+| `editor.title` | Window title template — `{project}`, `{port}`, `{branch}` tokens (VS Code, Cursor) |
+| `editor.color` | Title/status bar color — `"auto"` (deterministic from branch), or hex like `"#1a5276"` |
+| `editor.theme` | Full IDE theme override (e.g. `"Monokai"`, `"GitHub Dark"`) |
 
 ### Interpolation tokens
 

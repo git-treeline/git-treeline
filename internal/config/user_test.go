@@ -99,6 +99,104 @@ func TestUserConfig_Set_NewNestedKey(t *testing.T) {
 	}
 }
 
+func TestUserConfig_EditorTheme_ProjectLevel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"editor":{"themes":{"myapp":"Monokai"}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	if uc.EditorTheme("myapp", "main") != "Monokai" {
+		t.Errorf("expected Monokai, got %s", uc.EditorTheme("myapp", "main"))
+	}
+	if uc.EditorTheme("other", "main") != "" {
+		t.Errorf("expected empty for unknown project, got %s", uc.EditorTheme("other", "main"))
+	}
+}
+
+func TestUserConfig_EditorTheme_BranchLevel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"editor":{"themes":{"myapp":"Monokai","myapp/staging":"GitHub Dark"}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	if uc.EditorTheme("myapp", "staging") != "GitHub Dark" {
+		t.Errorf("expected branch-level override, got %s", uc.EditorTheme("myapp", "staging"))
+	}
+	if uc.EditorTheme("myapp", "main") != "Monokai" {
+		t.Errorf("expected project-level fallback, got %s", uc.EditorTheme("myapp", "main"))
+	}
+}
+
+func TestUserConfig_EditorColor(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"editor":{"colors":{"myapp":"#1a5276","myapp/staging":"#7b241c"}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	if uc.EditorColor("myapp", "staging") != "#7b241c" {
+		t.Errorf("expected branch override, got %s", uc.EditorColor("myapp", "staging"))
+	}
+	if uc.EditorColor("myapp", "main") != "#1a5276" {
+		t.Errorf("expected project fallback, got %s", uc.EditorColor("myapp", "main"))
+	}
+	if uc.EditorColor("myapp", "") != "#1a5276" {
+		t.Errorf("expected project-level with empty branch, got %s", uc.EditorColor("myapp", ""))
+	}
+}
+
+func TestUserConfig_EditorOverrides_Empty(t *testing.T) {
+	uc := LoadUserConfig("/nonexistent/config.json")
+	if uc.EditorTheme("any", "branch") != "" {
+		t.Error("expected empty theme from default config")
+	}
+	if uc.EditorColor("any", "branch") != "" {
+		t.Error("expected empty color from default config")
+	}
+}
+
+func TestUserConfig_EditorName_Empty(t *testing.T) {
+	uc := LoadUserConfig("/nonexistent/config.json")
+	if uc.EditorName() != "" {
+		t.Errorf("expected empty editor name, got %s", uc.EditorName())
+	}
+}
+
+func TestUserConfig_EditorName_SetAndReload(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	uc := LoadUserConfig(path)
+	uc.SetEditorName("cursor")
+	if err := uc.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := LoadUserConfig(path)
+	if reloaded.EditorName() != "cursor" {
+		t.Errorf("expected cursor, got %s", reloaded.EditorName())
+	}
+}
+
+func TestUserConfig_EditorName_DoesNotClobberOtherEditorSettings(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"editor":{"themes":{"myapp":"Monokai"}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	uc.SetEditorName("vscode")
+	if err := uc.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded := LoadUserConfig(path)
+	if reloaded.EditorName() != "vscode" {
+		t.Errorf("expected vscode, got %s", reloaded.EditorName())
+	}
+	if reloaded.EditorTheme("myapp", "") != "Monokai" {
+		t.Errorf("theme clobbered: got %s", reloaded.EditorTheme("myapp", ""))
+	}
+}
+
 func TestUserConfig_Save_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

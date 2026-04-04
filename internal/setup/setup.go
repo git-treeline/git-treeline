@@ -4,7 +4,6 @@
 package setup
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"github.com/git-treeline/git-treeline/internal/allocator"
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/database"
+	"github.com/git-treeline/git-treeline/internal/editor"
 	"github.com/git-treeline/git-treeline/internal/format"
 	"github.com/git-treeline/git-treeline/internal/interpolation"
 	"github.com/git-treeline/git-treeline/internal/registry"
@@ -318,27 +318,67 @@ func (s *Setup) runSetupCommands() error {
 }
 
 func (s *Setup) configureEditor(alloc *allocator.Allocation) {
-	editor := s.ProjectConfig.Editor()
-	if editor == nil {
-		return
-	}
-	titleTemplate, ok := editor["vscode_title"]
-	if !ok || titleTemplate == "" {
+	editorCfg := s.ProjectConfig.Editor()
+	if editorCfg == nil {
 		return
 	}
 
-	title := strings.NewReplacer(
-		"{project}", s.ProjectConfig.Project(),
+	project := s.ProjectConfig.Project()
+	replacer := strings.NewReplacer(
+		"{project}", project,
 		"{port}", fmt.Sprintf("%d", alloc.Port),
 		"{branch}", alloc.Branch,
-	).Replace(titleTemplate)
+	)
 
-	vscodeDir := filepath.Join(s.WorktreePath, ".vscode")
-	_ = os.MkdirAll(vscodeDir, 0o755)
-	settings := map[string]string{"window.title": title}
-	data, _ := json.MarshalIndent(settings, "", "  ")
-	_ = os.WriteFile(filepath.Join(vscodeDir, "settings.json"), append(data, '\n'), 0o644)
-	s.log(".vscode/settings.json written")
+	// Resolve title
+	title := ""
+	if t := editorCfg["title"]; t != "" {
+		title = replacer.Replace(t)
+	}
+
+	// Resolve color: "auto" = deterministic from branch, explicit hex, or user override
+	color := ""
+	if c := editorCfg["color"]; c != "" {
+		if c == "auto" {
+			color = editor.ColorForBranch(alloc.Branch)
+		} else {
+			color = c
+		}
+	}
+	if uc := s.UserConfig.EditorColor(project, alloc.Branch); uc != "" {
+		color = uc
+	}
+
+	// Resolve theme: project config, then user override
+	theme := editorCfg["theme"]
+	if ut := s.UserConfig.EditorTheme(project, alloc.Branch); ut != "" {
+		theme = ut
+	}
+
+	if title == "" && color == "" && theme == "" {
+		return
+	}
+
+	// VS Code / Cursor
+	vsSettings := editor.VSCodeSettings{
+		Title: title,
+		Color: color,
+		Theme: theme,
+	}
+	if target, err := editor.WriteVSCode(s.WorktreePath, vsSettings); err != nil {
+		_, _ = fmt.Fprintf(s.Log, "warning: editor settings: %v\n", err)
+	} else if target != "" {
+		s.log("Editor settings written to %s", filepath.Base(target))
+	}
+
+	// JetBrains (color only, if .idea exists)
+	if color != "" && editor.DetectJetBrains(s.WorktreePath) {
+		if target, err := editor.WriteJetBrains(s.WorktreePath, color); err != nil {
+			_, _ = fmt.Fprintf(s.Log, "warning: JetBrains color: %v\n", err)
+		} else if target != "" {
+			s.log("JetBrains project color set in %s", filepath.Base(target))
+		}
+	}
 }
 
 func (s *Setup) detectBranch() string {

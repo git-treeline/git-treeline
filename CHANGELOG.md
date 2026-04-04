@@ -1,5 +1,13 @@
-## [Unreleased]
+## [0.21.0]
 
+- **Editor auto-detection** — `gtl init` detects which editor is running (Cursor, VS Code, Zed, JetBrains products) via terminal env vars or PATH probing, and stores `editor.name` in user config. Used by the menulet for "Open in Editor" labels. Falls back gracefully — if detection fails, no name is stored and the menulet hides the link.
+- **Editor customization** — new `editor.title`, `editor.color`, and `editor.theme` config in `.treeline.yml` replace the old `editor.vscode_title`. Auto-migrated on first load.
+  - `title`: window title template with `{project}`, `{port}`, `{branch}` interpolation
+  - `color`: title/status/activity bar color — `"auto"` generates a deterministic color from the branch name, or set an explicit hex value. User config overrides via `editor.colors` in `config.json`.
+  - `theme`: full IDE theme override (e.g. `"Monokai"`). User config overrides via `editor.themes` in `config.json`.
+- **Workspace file detection** — when a `.code-workspace` file references the worktree, editor settings are written there (required for multi-root workspaces in VS Code/Cursor). Falls back to `.vscode/settings.json` for single-folder projects.
+- **JetBrains support** — if `.idea/` exists, `editor.color` sets the project header color in `workspace.xml` (JetBrains 2023.2+).
+- **User-level editor overrides** — `config.json` supports `editor.themes` and `editor.colors` maps keyed by `project` or `project/branch` for per-repo or per-branch IDE customization.
 - **Port reservations** — pin stable ports to projects or specific branches via `port.reservations` in user config. Project-level keys (`salt: 3000`) apply to the main repo; `project/branch` keys (`salt/staging: 3020`) pin a specific branch and take priority. Reserved ports block the full `port.increment` range so dynamic allocations never collide.
 - **`gtl refresh`** — re-allocate all registered worktrees with current config and reservations in one shot. Supervised servers are restarted automatically; manually-started servers are flagged for manual restart. Supports `--dry-run` and `--force`.
 - **`gtl port`** — prints the allocated port for the current worktree. Designed for agents and scripts that need the port without parsing status output.

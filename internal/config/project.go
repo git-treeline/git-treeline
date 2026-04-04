@@ -37,6 +37,7 @@ func LoadProjectConfig(projectRoot string) *ProjectConfig {
 	pc.migrateDefaultBranch()
 	pc.migrateCommands()
 	pc.migrateEnvFile()
+	pc.migrateEditor()
 	return pc
 }
 
@@ -165,7 +166,40 @@ func (pc *ProjectConfig) Editor() map[string]string {
 			result[k] = s
 		}
 	}
+	// Support old vscode_title as fallback for title
+	if result["title"] == "" {
+		if vt := result["vscode_title"]; vt != "" {
+			result["title"] = vt
+		}
+	}
 	return result
+}
+
+// EditorTitle returns the editor title template, or empty if not configured.
+func (pc *ProjectConfig) EditorTitle() string {
+	e := pc.Editor()
+	if e == nil {
+		return ""
+	}
+	return e["title"]
+}
+
+// EditorColor returns the editor color setting ("auto", a hex string, or empty).
+func (pc *ProjectConfig) EditorColor() string {
+	e := pc.Editor()
+	if e == nil {
+		return ""
+	}
+	return e["color"]
+}
+
+// EditorTheme returns the editor theme override, or empty if not configured.
+func (pc *ProjectConfig) EditorTheme() string {
+	e := pc.Editor()
+	if e == nil {
+		return ""
+	}
+	return e["theme"]
 }
 
 func (pc *ProjectConfig) StartCommand() string {
@@ -352,6 +386,31 @@ func (pc *ProjectConfig) migrateEnvFile() {
 		pc.Data["env_file"] = map[string]any{"path": target, "seed_from": source}
 	}
 	_ = os.WriteFile(path, []byte(newContent), 0o644)
+}
+
+// migrateEditor rewrites editor.vscode_title → editor.title in the YAML file
+// and in-memory data. Idempotent.
+func (pc *ProjectConfig) migrateEditor() {
+	editorMap, ok := pc.Data["editor"].(map[string]any)
+	if !ok {
+		return
+	}
+	vt, hasOld := editorMap["vscode_title"].(string)
+	_, hasNew := editorMap["title"].(string)
+	if !hasOld || hasNew {
+		return
+	}
+
+	editorMap["title"] = vt
+	delete(editorMap, "vscode_title")
+
+	path := pc.configPath()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return
+	}
+	content := strings.Replace(string(raw), "vscode_title:", "title:", 1)
+	_ = os.WriteFile(path, []byte(content), 0o644)
 }
 
 // rewriteEnvFileToSimple collapses the block-style env_file to a single line.

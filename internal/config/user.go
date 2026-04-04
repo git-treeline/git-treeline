@@ -98,6 +98,47 @@ func (uc *UserConfig) RedisURL() string {
 	return "redis://localhost:6379"
 }
 
+// EditorName returns the stored editor name (e.g. "cursor", "vscode"), or empty.
+func (uc *UserConfig) EditorName() string {
+	if v, ok := Dig(uc.Data, "editor", "name").(string); ok {
+		return v
+	}
+	return ""
+}
+
+// SetEditorName stores the editor name in config. Call Save() to persist.
+func (uc *UserConfig) SetEditorName(name string) {
+	uc.Set("editor.name", name)
+}
+
+// EditorTheme returns a theme override for the given project or project/branch.
+func (uc *UserConfig) EditorTheme(project, branch string) string {
+	return uc.resolveEditorOverride("themes", project, branch)
+}
+
+// EditorColor returns a color override for the given project or project/branch.
+func (uc *UserConfig) EditorColor(project, branch string) string {
+	return uc.resolveEditorOverride("colors", project, branch)
+}
+
+// resolveEditorOverride looks up a value in editor.<key> by project/branch
+// then project-only, matching the same precedence as port reservations.
+func (uc *UserConfig) resolveEditorOverride(key, project, branch string) string {
+	raw, ok := Dig(uc.Data, "editor", key).(map[string]any)
+	if !ok {
+		return ""
+	}
+	if branch != "" {
+		if v, ok := raw[project+"/"+branch].(string); ok {
+			return v
+		}
+	}
+	if v, ok := raw[project].(string); ok {
+		return v
+	}
+	return ""
+}
+
 func (uc *UserConfig) Get(dottedKey string) any {
 	keys := splitDotted(dottedKey)
 	return Dig(uc.Data, keys...)
