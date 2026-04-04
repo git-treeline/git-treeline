@@ -282,6 +282,7 @@ func (al *Allocator) nextAvailablePortsFrom(start, count int) []int {
 		usedSet[p] = true
 	}
 	reserved := al.UserConfig.ReservedPorts()
+	routerPort := al.UserConfig.RouterPort()
 
 	candidate := start
 	for {
@@ -290,7 +291,7 @@ func (al *Allocator) nextAvailablePortsFrom(start, count int) []int {
 		for i := range count {
 			port := candidate + i
 			block[i] = port
-			if usedSet[port] || reserved[port] || !IsPortFree(port) {
+			if usedSet[port] || reserved[port] || port == routerPort || !IsPortFree(port) {
 				conflict = true
 			}
 		}

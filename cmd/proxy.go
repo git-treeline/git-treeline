@@ -32,7 +32,11 @@ mkcert (if installed) or a self-signed fallback.
 Examples:
   gtl proxy 3000 3050        # forward :3000 → :3050
   gtl proxy 3000             # forward :3000 → current worktree's port
-  gtl proxy 3000 --tls       # HTTPS on :3000 → current worktree's port`,
+  gtl proxy 3000 --tls       # HTTPS on :3000 → current worktree's port
+
+Related commands:
+  gtl serve    Local HTTPS subdomain router (https://{branch}.localhost)
+  gtl tunnel   Public HTTPS tunneling via Cloudflare`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		listenPort, err := strconv.Atoi(args[0])

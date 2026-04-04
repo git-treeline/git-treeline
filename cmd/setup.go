@@ -8,6 +8,8 @@ import (
 
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/detect"
+	"github.com/git-treeline/git-treeline/internal/proxy"
+	"github.com/git-treeline/git-treeline/internal/service"
 	"github.com/git-treeline/git-treeline/internal/setup"
 	"github.com/git-treeline/git-treeline/internal/templates"
 	"github.com/git-treeline/git-treeline/internal/worktree"
@@ -62,10 +64,27 @@ var setupCmd = &cobra.Command{
 		uc := config.LoadUserConfig("")
 		s := setup.New(path, setupMainRepo, uc)
 		s.Options.DryRun = setupDryRun
-		_, err := s.Run()
+		alloc, err := s.Run()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 			os.Exit(1)
+		}
+
+		if !setupDryRun {
+			routeKey := proxy.RouteKey(s.ProjectConfig.Project(), alloc.Branch)
+
+			if service.IsRunning() {
+				if service.IsPortForwardConfigured() {
+					fmt.Printf("==> Router: https://%s.localhost\n", routeKey)
+				} else {
+					port := uc.RouterPort()
+					fmt.Printf("==> Router: https://%s.localhost:%d\n", routeKey, port)
+				}
+			}
+
+			if domain := uc.TunnelDomain(); domain != "" {
+				fmt.Printf("==> Tunnel: gtl tunnel → https://%s.%s\n", routeKey, domain)
+			}
 		}
 
 		absPath, _ := filepath.Abs(path)

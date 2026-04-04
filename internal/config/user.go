@@ -18,6 +18,10 @@ var UserDefaults = map[string]any{
 		"strategy": "prefixed",
 		"url":      "redis://localhost:6379",
 	},
+	"router": map[string]any{
+		"port": float64(3001),
+	},
+	"tunnel": map[string]any{},
 }
 
 type UserConfig struct {
@@ -96,6 +100,32 @@ func (uc *UserConfig) RedisURL() string {
 		return s
 	}
 	return "redis://localhost:6379"
+}
+
+// RouterPort returns the port the subdomain router listens on. Default 3001.
+// Kept off 3000 so gtl proxy can still forward OAuth/webhook callbacks on :3000.
+func (uc *UserConfig) RouterPort() int {
+	v := Dig(uc.Data, "router", "port")
+	if f, ok := v.(float64); ok {
+		return int(f)
+	}
+	return 3001
+}
+
+// TunnelDomain returns the BYO domain for named tunnels (e.g. "myteam.dev").
+func (uc *UserConfig) TunnelDomain() string {
+	if v, ok := Dig(uc.Data, "tunnel", "domain").(string); ok {
+		return v
+	}
+	return ""
+}
+
+// TunnelName returns the cloudflared tunnel name (e.g. "gtl").
+func (uc *UserConfig) TunnelName() string {
+	if v, ok := Dig(uc.Data, "tunnel", "name").(string); ok {
+		return v
+	}
+	return ""
 }
 
 // EditorName returns the stored editor name (e.g. "cursor", "vscode"), or empty.

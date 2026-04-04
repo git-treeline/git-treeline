@@ -1,0 +1,332 @@
+// Package tunnel wraps cloudflared to expose local ports via public HTTPS tunnels.
+// Supports quick tunnels (random URL, no account) and named tunnels with BYO domains.
+package tunnel
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strings"
+	"syscall"
+)
+
+// RunQuick starts a Cloudflare quick tunnel exposing the given local port.
+// The tunnel gets a random *.trycloudflare.com URL. Blocks until interrupted.
+func RunQuick(port int) error {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command(cfPath, "tunnel", "--url", fmt.Sprintf("http://localhost:%d", port))
+	cmd.Stdout = os.Stdout
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start cloudflared: %w", err)
+	}
+
+	// Scan cloudflared stderr for the tunnel URL and print it cleanly.
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		urlPrinted := false
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !urlPrinted {
+				if u := extractTrycloudflareURL(line); u != "" {
+					fmt.Printf("Tunnel: %s → http://localhost:%d\n", u, port)
+					fmt.Println("Press Ctrl+C to stop")
+					fmt.Println()
+					urlPrinted = true
+					continue
+				}
+			}
+			filterLine(line)
+		}
+	}()
+
+	return waitForSignalOrExit(cmd)
+}
+
+var trycloudflareRe = regexp.MustCompile(`https://[a-z0-9-]+\.trycloudflare\.com`)
+
+func extractTrycloudflareURL(line string) string {
+	return trycloudflareRe.FindString(line)
+}
+
+// RunNamed starts a named Cloudflare tunnel using a generated config file.
+// The tunnel must already exist (via Setup) and DNS must be routed.
+func RunNamed(tunnelName, domain, routeKey string, port int) error {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return err
+	}
+
+	hostname := routeKey + "." + domain
+	configPath, err := writeTunnelConfig(tunnelName, hostname, port)
+	if err != nil {
+		return fmt.Errorf("failed to write tunnel config: %w", err)
+	}
+
+	fmt.Printf("Tunnel: https://%s → http://localhost:%d\n", hostname, port)
+	fmt.Println("Press Ctrl+C to stop")
+	fmt.Println()
+
+	cmd := exec.Command(cfPath, "tunnel", "--config", configPath, "run", tunnelName)
+	cmd.Stdout = os.Stdout
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start cloudflared: %w", err)
+	}
+
+	go filterCloudflaredLogs(stderrPipe)
+
+	return waitForSignalOrExit(cmd)
+}
+
+// --- Shared cloudflared process management ---
+
+// filterCloudflaredLogs reads cloudflared stderr and only passes through
+// errors and warnings, suppressing the verbose startup noise.
+func filterCloudflaredLogs(r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		filterLine(scanner.Text())
+	}
+}
+
+var requestMethodRe = regexp.MustCompile(`\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b`)
+
+func filterLine(line string) {
+	switch {
+	case strings.Contains(line, "ERR"),
+		strings.Contains(line, "WRN"),
+		strings.Contains(line, "failed"),
+		strings.Contains(line, "error"):
+		fmt.Fprintln(os.Stderr, line)
+	case requestMethodRe.MatchString(line):
+		fmt.Println(line)
+	case strings.Contains(line, "INF") && strings.Contains(line, "Registered"):
+		// Connection events are useful feedback
+		fmt.Println(line)
+	}
+}
+
+func waitForSignalOrExit(cmd *exec.Cmd) error {
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case <-quit:
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		return <-done
+	case err := <-done:
+		return err
+	}
+}
+
+// --- Setup / validation helpers ---
+
+// ResolveCloudflared returns the path to cloudflared or an error with install instructions.
+func ResolveCloudflared() (string, error) {
+	path, err := exec.LookPath("cloudflared")
+	if err != nil {
+		return "", fmt.Errorf("cloudflared not found in PATH\n  Install: brew install cloudflared\n  Or: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")
+	}
+	return path, nil
+}
+
+// OfferInstall prompts the user to install cloudflared and attempts the install.
+// Returns true if the install was attempted, false if the user declined.
+func OfferInstall() bool {
+	fmt.Println("    cloudflared is not installed.")
+	fmt.Println()
+
+	switch runtime.GOOS {
+	case "darwin":
+		if _, err := exec.LookPath("brew"); err == nil {
+			fmt.Println("    Install via Homebrew?")
+			fmt.Print("    [y/N] ")
+			var answer string
+			fmt.Scanln(&answer)
+			if answer != "y" && answer != "yes" {
+				fmt.Println("    Install manually: brew install cloudflared")
+				return false
+			}
+			cmd := exec.Command("brew", "install", "cloudflared")
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "    brew install failed: %v\n", err)
+				return false
+			}
+			return true
+		}
+	}
+
+	fmt.Println("    Install cloudflared to continue:")
+	fmt.Println("      macOS:  brew install cloudflared")
+	fmt.Println("      Linux:  https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/")
+	return false
+}
+
+// IsLoggedIn checks whether cloudflared has credentials (cert.pem exists).
+func IsLoggedIn() bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(home, ".cloudflared", "cert.pem"))
+	return err == nil
+}
+
+// Login runs `cloudflared tunnel login` which opens a browser for OAuth.
+func Login() error {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.Command(cfPath, "tunnel", "login")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// TunnelExists checks whether a named tunnel already exists.
+func TunnelExists(name string) bool {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return false
+	}
+	out, err := exec.Command(cfPath, "tunnel", "list", "-o", "json").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	var tunnels []struct {
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(out, &tunnels) != nil {
+		return false
+	}
+	for _, t := range tunnels {
+		if strings.EqualFold(t.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// CreateTunnel runs `cloudflared tunnel create <name>`.
+func CreateTunnel(name string) error {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(cfPath, "tunnel", "create", name)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// RouteDNS creates a CNAME record for hostname → tunnel.
+func RouteDNS(tunnelName, hostname string) error {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(cfPath, "tunnel", "route", "dns", "--overwrite-dns", tunnelName, hostname)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// ConfigDir returns the path where gtl stores tunnel config files.
+func ConfigDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".cloudflared")
+}
+
+// writeTunnelConfig generates a cloudflared config.yml for a named tunnel
+// routing a single hostname to a local port.
+func writeTunnelConfig(tunnelName, hostname string, port int) (string, error) {
+	credPath := findCredentialsFile(tunnelName)
+
+	config := fmt.Sprintf("tunnel: %q\ncredentials-file: %q\n\ningress:\n  - hostname: %q\n    service: http://localhost:%d\n  - service: http_status:404\n",
+		tunnelName, credPath, hostname, port)
+
+	dir := ConfigDir()
+	configPath := filepath.Join(dir, fmt.Sprintf("gtl-%s.yml", tunnelName))
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(configPath, []byte(config), 0o600); err != nil {
+		return "", err
+	}
+	return configPath, nil
+}
+
+// findCredentialsFile locates the tunnel credentials JSON in ~/.cloudflared/
+// by looking up the tunnel ID via `cloudflared tunnel list`.
+func findCredentialsFile(tunnelName string) string {
+	dir := ConfigDir()
+	if id := lookupTunnelID(tunnelName); id != "" {
+		path := filepath.Join(dir, id+".json")
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return filepath.Join(dir, tunnelName+".json")
+}
+
+func lookupTunnelID(tunnelName string) string {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return ""
+	}
+	out, err := exec.Command(cfPath, "tunnel", "list", "-o", "json").CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	var tunnels []struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	if json.Unmarshal(out, &tunnels) != nil {
+		return ""
+	}
+	for _, t := range tunnels {
+		if strings.EqualFold(t.Name, tunnelName) {
+			return t.ID
+		}
+	}
+	return ""
+}
+
+// GenerateConfig returns the config YAML content as a string (for testing).
+func GenerateConfig(tunnelName, hostname string, port int, credPath string) string {
+	return fmt.Sprintf("tunnel: %q\ncredentials-file: %q\n\ningress:\n  - hostname: %q\n    service: http://localhost:%d\n  - service: http_status:404\n",
+		tunnelName, credPath, hostname, port)
+}

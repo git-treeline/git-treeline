@@ -131,6 +131,12 @@ var initCmd = &cobra.Command{
 			}
 		}
 
+		fmt.Println()
+		fmt.Println("Next steps:")
+		fmt.Println("  gtl setup             Allocate ports for this worktree")
+		fmt.Println("  gtl serve install     HTTPS subdomain router (https://{branch}.localhost)")
+		fmt.Println("  gtl tunnel setup      Public tunneling via Cloudflare (https://{branch}.yourdomain.dev)")
+
 		openInEditor(path)
 		return nil
 	},

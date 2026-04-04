@@ -30,6 +30,29 @@ func Prompt(message string, force bool, reader io.Reader) bool {
 	return false
 }
 
+// Input asks for free-text input with an optional default value.
+// Returns the trimmed input or the default if the user presses Enter.
+func Input(message, defaultValue string, reader io.Reader) string {
+	if reader == nil {
+		reader = os.Stdin
+	}
+
+	if defaultValue != "" {
+		fmt.Printf("%s [%s]: ", message, defaultValue)
+	} else {
+		fmt.Printf("%s: ", message)
+	}
+
+	scanner := bufio.NewScanner(reader)
+	if scanner.Scan() {
+		input := strings.TrimSpace(scanner.Text())
+		if input != "" {
+			return input
+		}
+	}
+	return defaultValue
+}
+
 // Select presents a numbered list of options and returns the chosen index.
 // defaultIdx is pre-selected when the user presses Enter without typing.
 // Reader can be overridden for testing; defaults to os.Stdin.
