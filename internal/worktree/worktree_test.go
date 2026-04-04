@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -258,6 +259,88 @@ func TestDetectDefaultBranch_FallsBackToLocalDevelop(t *testing.T) {
 	got := DetectDefaultBranch(dir)
 	if got != "develop" {
 		t.Errorf("expected develop, got %q", got)
+	}
+}
+
+func TestCheckout(t *testing.T) {
+	repo := initTestRepo(t)
+	run(t, repo, "git", "branch", "feature-checkout")
+
+	orig, _ := os.Getwd()
+	_ = os.Chdir(repo)
+	defer func() { _ = os.Chdir(orig) }()
+
+	if err := Checkout("feature-checkout"); err != nil {
+		t.Fatalf("Checkout failed: %v", err)
+	}
+
+	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
+	cmd.Dir = repo
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("failed to get HEAD: %v", err)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "feature-checkout" {
+		t.Errorf("expected HEAD on feature-checkout, got %s", branch)
+	}
+}
+
+func TestCheckout_NonexistentBranch(t *testing.T) {
+	repo := initTestRepo(t)
+
+	orig, _ := os.Getwd()
+	_ = os.Chdir(repo)
+	defer func() { _ = os.Chdir(orig) }()
+
+	if err := Checkout("nonexistent-branch-xyz"); err == nil {
+		t.Error("expected error for nonexistent branch")
+	}
+}
+
+func TestListBranches(t *testing.T) {
+	repo := initTestRepo(t)
+	run(t, repo, "git", "branch", "alpha")
+	run(t, repo, "git", "branch", "beta")
+	run(t, repo, "git", "branch", "gamma")
+
+	orig, _ := os.Getwd()
+	_ = os.Chdir(repo)
+	defer func() { _ = os.Chdir(orig) }()
+
+	all := ListBranches("")
+	if len(all) < 3 {
+		t.Errorf("expected at least 3 branches, got %d: %v", len(all), all)
+	}
+
+	filtered := ListBranches("al")
+	if len(filtered) != 1 || filtered[0] != "alpha" {
+		t.Errorf("expected [alpha], got %v", filtered)
+	}
+
+	none := ListBranches("zzz-no-match")
+	if len(none) != 0 {
+		t.Errorf("expected empty, got %v", none)
+	}
+}
+
+func TestListBranches_DeduplicatesOrigin(t *testing.T) {
+	repo := initTestRepo(t)
+	run(t, repo, "git", "branch", "feature-x")
+
+	orig, _ := os.Getwd()
+	_ = os.Chdir(repo)
+	defer func() { _ = os.Chdir(orig) }()
+
+	branches := ListBranches("feature")
+	count := 0
+	for _, b := range branches {
+		if b == "feature-x" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected feature-x exactly once, got %d in %v", count, branches)
 	}
 }
 

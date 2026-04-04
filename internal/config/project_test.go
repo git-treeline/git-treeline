@@ -168,3 +168,155 @@ func TestProjectConfig_MergeTarget_Empty(t *testing.T) {
 		t.Errorf("expected empty string, got %s", pc.MergeTarget())
 	}
 }
+
+// --- env_file format tests ---
+
+func TestEnvFile_StringShorthand(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\nenv_file: .env\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+	if pc.EnvFileTarget() != ".env" {
+		t.Errorf("expected .env, got %s", pc.EnvFileTarget())
+	}
+	if pc.EnvFileSource() != ".env" {
+		t.Errorf("expected .env for source, got %s", pc.EnvFileSource())
+	}
+}
+
+func TestEnvFile_NewMapFormat(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\nenv_file:\n  path: .env\n  seed_from: .env.example\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+	if pc.EnvFileTarget() != ".env" {
+		t.Errorf("expected .env, got %s", pc.EnvFileTarget())
+	}
+	if pc.EnvFileSource() != ".env.example" {
+		t.Errorf("expected .env.example, got %s", pc.EnvFileSource())
+	}
+}
+
+func TestEnvFile_OldMapFormat_SameTargetSource(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\nenv_file:\n  target: .env.local\n  source: .env.local\n"
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+
+	if pc.EnvFileTarget() != ".env.local" {
+		t.Errorf("expected .env.local, got %s", pc.EnvFileTarget())
+	}
+
+	// Should have been migrated to string form
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if !strings.Contains(content, "env_file: .env.local") {
+		t.Errorf("expected migration to string form, got:\n%s", content)
+	}
+	if strings.Contains(content, "target:") {
+		t.Error("expected target: key to be removed after migration")
+	}
+}
+
+func TestEnvFile_OldMapFormat_DifferentTargetSource(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\nenv_file:\n  target: .env\n  source: .env.example\n"
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	pc := LoadProjectConfig(dir)
+
+	if pc.EnvFileTarget() != ".env" {
+		t.Errorf("expected .env, got %s", pc.EnvFileTarget())
+	}
+	if pc.EnvFileSource() != ".env.example" {
+		t.Errorf("expected .env.example, got %s", pc.EnvFileSource())
+	}
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if !strings.Contains(content, "path: .env") {
+		t.Errorf("expected path: .env after migration, got:\n%s", content)
+	}
+	if !strings.Contains(content, "seed_from: .env.example") {
+		t.Errorf("expected seed_from: .env.example after migration, got:\n%s", content)
+	}
+	if strings.Contains(content, "target:") || strings.Contains(content, "source:") {
+		t.Error("expected old keys removed after migration")
+	}
+}
+
+func TestEnvFile_Migration_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\nenv_file: .env.local\n"
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	_ = LoadProjectConfig(dir)
+	_ = LoadProjectConfig(dir) // second load
+
+	data, _ := os.ReadFile(path)
+	if string(data) != yml {
+		t.Errorf("file should be unchanged, got:\n%s", string(data))
+	}
+}
+
+func TestEnvFile_Migration_AlreadyNewMap(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: myapp\nenv_file:\n  path: .env\n  seed_from: .env.example\n"
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte(yml), 0o644)
+
+	_ = LoadProjectConfig(dir)
+
+	data, _ := os.ReadFile(path)
+	if string(data) != yml {
+		t.Errorf("file should be unchanged for already-new format, got:\n%s", string(data))
+	}
+}
+
+func TestRewriteEnvFileBlock_Simple(t *testing.T) {
+	input := "project: myapp\nenv_file:\n  target: .env.local\n  source: .env.local\nenv:\n  PORT: \"{port}\"\n"
+	got := rewriteEnvFileToSimple(input, ".env.local")
+
+	if !strings.Contains(got, "env_file: .env.local") {
+		t.Errorf("expected simple form, got:\n%s", got)
+	}
+	if strings.Contains(got, "target:") || strings.Contains(got, "source:") {
+		t.Errorf("expected old keys removed, got:\n%s", got)
+	}
+	if !strings.Contains(got, "env:") {
+		t.Errorf("expected subsequent blocks preserved, got:\n%s", got)
+	}
+}
+
+func TestRewriteEnvFileBlock_Extended(t *testing.T) {
+	input := "project: myapp\nenv_file:\n  target: .env\n  source: .env.example\nenv:\n  PORT: \"{port}\"\n"
+	got := rewriteEnvFileToExtended(input, ".env", ".env.example")
+
+	if !strings.Contains(got, "path: .env") {
+		t.Errorf("expected path key, got:\n%s", got)
+	}
+	if !strings.Contains(got, "seed_from: .env.example") {
+		t.Errorf("expected seed_from key, got:\n%s", got)
+	}
+	if strings.Contains(got, "target:") || strings.Contains(got, "source:") {
+		t.Errorf("expected old keys removed, got:\n%s", got)
+	}
+}
+
+func TestRewriteEnvFileBlock_PreservesRestOfFile(t *testing.T) {
+	input := "project: myapp\n\nenv_file:\n  target: .env.local\n  source: .env.local\n\ndatabase:\n  adapter: postgresql\n"
+	got := rewriteEnvFileToSimple(input, ".env.local")
+
+	if !strings.Contains(got, "database:") {
+		t.Errorf("expected database block preserved, got:\n%s", got)
+	}
+	if !strings.Contains(got, "project: myapp") {
+		t.Errorf("expected project preserved, got:\n%s", got)
+	}
+}
