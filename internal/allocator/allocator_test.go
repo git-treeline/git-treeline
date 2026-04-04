@@ -450,6 +450,199 @@ func TestReservation_WithMultiplePorts(t *testing.T) {
 	}
 }
 
+func TestBranchReservation_MatchesWorktree(t *testing.T) {
+	dir := t.TempDir()
+	reg := registry.New(filepath.Join(dir, "registry.json"))
+
+	confPath := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(confPath, []byte(`{
+		"port": {
+			"base": 3000,
+			"increment": 10,
+			"reservations": {"myapp/staging": 6000}
+		},
+		"redis": {"strategy": "prefixed", "url": "redis://localhost:6379"}
+	}`), 0o644)
+	uc := config.LoadUserConfig(confPath)
+
+	projDir := filepath.Join(dir, "project")
+	_ = os.MkdirAll(projDir, 0o755)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: myapp\n"), 0o644)
+	pc := config.LoadProjectConfig(projDir)
+
+	al := New(uc, pc, reg)
+	alloc, err := al.Allocate("/wt/staging", "staging", false, "staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alloc.Port != 6000 {
+		t.Errorf("expected branch-reserved port 6000, got %d", alloc.Port)
+	}
+}
+
+func TestBranchReservation_PriorityOverProject(t *testing.T) {
+	dir := t.TempDir()
+	reg := registry.New(filepath.Join(dir, "registry.json"))
+
+	confPath := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(confPath, []byte(`{
+		"port": {
+			"base": 3000,
+			"increment": 10,
+			"reservations": {"myapp": 4000, "myapp/main": 4500}
+		},
+		"redis": {"strategy": "prefixed", "url": "redis://localhost:6379"}
+	}`), 0o644)
+	uc := config.LoadUserConfig(confPath)
+
+	projDir := filepath.Join(dir, "project")
+	_ = os.MkdirAll(projDir, 0o755)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: myapp\n"), 0o644)
+	pc := config.LoadProjectConfig(projDir)
+
+	al := New(uc, pc, reg)
+	alloc, err := al.Allocate("/repo/main", "main", true, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alloc.Port != 4500 {
+		t.Errorf("expected branch-specific 4500 to take priority, got %d", alloc.Port)
+	}
+}
+
+func TestProjectReservation_DoesNotMatchWorktree(t *testing.T) {
+	dir := t.TempDir()
+	reg := registry.New(filepath.Join(dir, "registry.json"))
+
+	confPath := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(confPath, []byte(`{
+		"port": {
+			"base": 3000,
+			"increment": 10,
+			"reservations": {"myapp": 4000}
+		},
+		"redis": {"strategy": "prefixed", "url": "redis://localhost:6379"}
+	}`), 0o644)
+	uc := config.LoadUserConfig(confPath)
+
+	projDir := filepath.Join(dir, "project")
+	_ = os.MkdirAll(projDir, 0o755)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: myapp\n"), 0o644)
+	pc := config.LoadProjectConfig(projDir)
+
+	al := New(uc, pc, reg)
+	alloc, err := al.Allocate("/wt/feature-x", "feature-x", false, "feature-x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if alloc.Port == 4000 {
+		t.Error("project-only reservation should not match a worktree allocation")
+	}
+}
+
+func TestReuseExisting_ReservationMismatch(t *testing.T) {
+	dir := t.TempDir()
+	reg := registry.New(filepath.Join(dir, "registry.json"))
+
+	confPath := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(confPath, []byte(`{
+		"port": {"base": 3000, "increment": 10},
+		"redis": {"strategy": "prefixed", "url": "redis://localhost:6379"}
+	}`), 0o644)
+	uc := config.LoadUserConfig(confPath)
+
+	projDir := filepath.Join(dir, "project")
+	_ = os.MkdirAll(projDir, 0o755)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: myapp\n"), 0o644)
+	pc := config.LoadProjectConfig(projDir)
+
+	al := New(uc, pc, reg)
+
+	// First allocation: dynamic port
+	alloc1, _ := al.Allocate("/repo/main", "main", true)
+	_ = reg.Allocate(alloc1.ToRegistryEntry())
+	if alloc1.Port == 4000 {
+		t.Fatal("unexpected port 4000 before reservation")
+	}
+
+	// Add a reservation and create a new allocator
+	_ = os.WriteFile(confPath, []byte(`{
+		"port": {"base": 3000, "increment": 10, "reservations": {"myapp": 4000}},
+		"redis": {"strategy": "prefixed", "url": "redis://localhost:6379"}
+	}`), 0o644)
+	uc2 := config.LoadUserConfig(confPath)
+	al2 := New(uc2, pc, reg)
+
+	// Second allocation should NOT reuse — reservation mismatch
+	alloc2, _ := al2.Allocate("/repo/main", "main", true, "main")
+	if alloc2.Reused {
+		t.Error("expected fresh allocation after adding reservation, got reuse")
+	}
+	if alloc2.Port != 4000 {
+		t.Errorf("expected reserved port 4000, got %d", alloc2.Port)
+	}
+}
+
+func TestReuseExisting_PortConflictWithOtherReservation(t *testing.T) {
+	dir := t.TempDir()
+	reg := registry.New(filepath.Join(dir, "registry.json"))
+
+	// Set up: worktree dynamically got port 3010
+	_ = reg.Allocate(registry.Allocation{
+		"project":  "other",
+		"worktree": "/wt/branch-a",
+		"port":     float64(3010),
+		"ports":    []any{float64(3010)},
+	})
+
+	// Now a DIFFERENT project reserves 3010
+	confPath := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(confPath, []byte(`{
+		"port": {"base": 3000, "increment": 10, "reservations": {"reserved-app": 3010}},
+		"redis": {"strategy": "prefixed", "url": "redis://localhost:6379"}
+	}`), 0o644)
+	uc := config.LoadUserConfig(confPath)
+
+	projDir := filepath.Join(dir, "project")
+	_ = os.MkdirAll(projDir, 0o755)
+	_ = os.WriteFile(filepath.Join(projDir, ".treeline.yml"), []byte("project: other\n"), 0o644)
+	pc := config.LoadProjectConfig(projDir)
+
+	al := New(uc, pc, reg)
+	alloc, _ := al.Allocate("/wt/branch-a", "branch-a", false)
+	if alloc.Reused {
+		t.Error("expected fresh allocation — current port 3010 is reserved by another project")
+	}
+	if alloc.Port == 3010 {
+		t.Error("new allocation should not use port 3010 (reserved by reserved-app)")
+	}
+}
+
+func TestReservedPorts_CoversFullBlock(t *testing.T) {
+	dir := t.TempDir()
+	confPath := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(confPath, []byte(`{
+		"port": {
+			"base": 3000,
+			"increment": 3,
+			"reservations": {"a": 5000, "b": 6000}
+		}
+	}`), 0o644)
+	uc := config.LoadUserConfig(confPath)
+
+	reserved := uc.ReservedPorts()
+	for _, base := range []int{5000, 6000} {
+		for i := range 3 {
+			if !reserved[base+i] {
+				t.Errorf("expected port %d to be reserved", base+i)
+			}
+		}
+	}
+	if reserved[5003] {
+		t.Error("port 5003 should not be reserved")
+	}
+}
+
 func TestIsPortFree(t *testing.T) {
 	if !IsPortFree(49999) {
 		t.Skip("port 49999 is in use, skipping")

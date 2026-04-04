@@ -53,7 +53,7 @@ cd your-project
 gtl init
 ```
 
-`init` auto-detects your framework (Next.js, Vite, Rails, Express, Python, Rust, Go) and generates a tailored `.treeline.yml`. It also creates agent context files (`.cursor/rules/treeline.mdc` or `CLAUDE.md`) so AI tools understand the setup.
+`init` auto-detects your framework (Next.js, Vite, Rails, Express, Python, Rust, Go) and generates a tailored `.treeline.yml`. It also writes a treeline section to `AGENTS.md` (or `CLAUDE.md` if that exists) so AI agents know to use `gtl port` instead of assuming port 3000. This works with Cursor, Claude Code, and Codex.
 
 After generating the config, `init` runs framework-aware diagnostics and prints actionable warnings — for example, if your Vite project needs `vite.config.js` changes to read the allocated port, or if your Node project lacks a dotenv library. Commit the config so your team shares it.
 
@@ -149,7 +149,16 @@ git worktree remove ../myapp-feature-auth
 
 For bulk cleanup: `gtl release --project myapp --drop-db` or `gtl release --all --drop-db`.
 
-### 10. Prune stale allocations
+### 10. Refresh after config changes
+
+```bash
+gtl refresh --dry-run    # preview what would change
+gtl refresh              # apply changes, restart supervised servers
+```
+
+After adding or changing port reservations (or `ports_needed`), `gtl refresh` walks every allocation and re-resolves ports. Supervised servers (`gtl start`) are restarted automatically. Servers you started manually are flagged so you know which ones to bounce.
+
+### 11. Prune stale allocations
 
 ```bash
 gtl prune --stale
@@ -372,10 +381,16 @@ Controls allocation policy for your machine. Created automatically by `gtl init`
 }
 ```
 
-**Port reservations** pin a project's main branch to a stable port. When `gtl setup` runs on a main repo with a reservation, it uses the reserved port instead of allocating dynamically. Worktrees still get dynamic ports, and reserved ports are excluded from the dynamic pool so they never collide.
+**Port reservations** pin stable ports to specific projects or branches. A project-level key (e.g. `salt`) applies to the main repo. A `project/branch` key (e.g. `salt/staging`) pins a specific branch — useful for long-lived worktrees that need a known port. Branch-specific keys take priority over project-level keys. Reserved ports block the full `port.increment` range and are excluded from the dynamic pool so they never collide.
 
 ```bash
+# Main repo always gets port 3000
 gtl config set port.reservations.salt 3000
+
+# The staging worktree always gets port 3020
+gtl config set port.reservations.salt/staging 3020
+
+# Another project's main repo
 gtl config set port.reservations.truherd 3002
 ```
 
@@ -448,12 +463,16 @@ Git Treeline is designed to support AI coding agents that work in worktrees. Any
 
 ### Agent context generation
 
-`gtl init` auto-generates context files that teach AI agents how to use Treeline in your project:
+`gtl init` writes a treeline section to `AGENTS.md` (created if it doesn't exist, appended otherwise). If `CLAUDE.md` exists but `AGENTS.md` doesn't, it appends there instead. The section tells agents to use `gtl port` for port discovery and lists the allocated env vars.
 
-- `.cursor/rules/treeline.mdc` for Cursor
-- `CLAUDE.md` section for Claude Code
+`AGENTS.md` is read by Cursor, Claude Code, and Codex — one file covers all three. Use `--skip-agent-config` to opt out.
 
-Use `--skip-agent-config` to opt out.
+Agents can query the port programmatically:
+
+```bash
+PORT=$(gtl port)
+curl http://localhost:$PORT/health
+```
 
 ### Lifecycle hooks
 
@@ -490,13 +509,14 @@ This returns the full registry as JSON — allocated ports, databases, Redis nam
 
 | Command | Flags | Description |
 |---|---|---|
-| `gtl init` | `--project` `--template-db` `--skip-agent-config` | Generate `.treeline.yml` (auto-detects framework and creates agent context files) |
+| `gtl init` | `--project` `--template-db` `--skip-agent-config` | Generate `.treeline.yml` (auto-detects framework, writes `AGENTS.md` section) |
 | `gtl new <branch>` | `--base` `--path` `--start` `--dry-run` | Create worktree + allocate + setup in one step |
 | `gtl review <PR#>` | `--path` `--start` | Check out a GitHub PR into a worktree with full setup (requires `gh`) |
 | `gtl switch <branch-or-PR#>` | `--setup` | Switch worktree to a different branch or PR — fetches, checks out, refreshes env |
 | `gtl setup [PATH]` | `--main-repo` `--dry-run` | Allocate resources and configure a worktree (idempotent) |
-| `gtl refresh [PATH]` | | Re-interpolate env file from existing allocation |
 | `gtl release [PATH]` | `--drop-db` `--project` `--all` `--force`/`-f` `--dry-run` | Free allocated resources (confirms before releasing unless `--force`) |
+| `gtl port` | | Print the allocated port for the current worktree |
+| `gtl refresh` | `--dry-run` `--force`/`-f` | Re-allocate all worktrees with current reservations; restarts supervised servers, warns about manual ones |
 | `gtl doctor` | | Check config, allocation, runtime, and diagnostics |
 | `gtl status` | `--project` `--json` `--check` `--watch` `--interval` | Show allocations across projects |
 | `gtl prune` | `--stale` `--merged` `--drop-db` `--force` | Remove orphaned allocations |

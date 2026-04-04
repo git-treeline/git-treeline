@@ -65,14 +65,19 @@ func (uc *UserConfig) PortReservations() map[string]int {
 	return result
 }
 
+// ReservedPorts returns all ports covered by reservations. Each reservation
+// blocks a full increment-sized range so multi-port projects are protected.
 func (uc *UserConfig) ReservedPorts() map[int]bool {
 	reservations := uc.PortReservations()
 	if len(reservations) == 0 {
 		return nil
 	}
-	set := make(map[int]bool, len(reservations))
-	for _, port := range reservations {
-		set[port] = true
+	inc := uc.PortIncrement()
+	set := make(map[int]bool, len(reservations)*inc)
+	for _, base := range reservations {
+		for i := range inc {
+			set[base+i] = true
+		}
 	}
 	return set
 }

@@ -96,17 +96,22 @@ func New(uc *config.UserConfig, pc *config.ProjectConfig, reg *registry.Registry
 // allocation is found in the registry, it is reused (idempotent). Otherwise
 // a new allocation is created. When mainWorktree is true, base resources
 // (port_base, template DB, no redis prefix) are returned directly.
-func (al *Allocator) Allocate(worktreePath, worktreeName string, mainWorktree bool) (*Allocation, error) {
-	if existing := al.reuseExisting(worktreePath, worktreeName); existing != nil {
+// Branch is optional — when provided, enables branch-specific port reservations.
+func (al *Allocator) Allocate(worktreePath, worktreeName string, mainWorktree bool, branch ...string) (*Allocation, error) {
+	var b string
+	if len(branch) > 0 {
+		b = branch[0]
+	}
+	if existing := al.reuseExisting(worktreePath, worktreeName, mainWorktree, b); existing != nil {
 		return existing, nil
 	}
 	if mainWorktree {
-		return al.allocateMain(worktreePath, worktreeName)
+		return al.allocateMain(worktreePath, worktreeName, b)
 	}
-	return al.allocateNew(worktreePath, worktreeName)
+	return al.allocateNew(worktreePath, worktreeName, b)
 }
 
-func (al *Allocator) reuseExisting(worktreePath, worktreeName string) *Allocation {
+func (al *Allocator) reuseExisting(worktreePath, worktreeName string, mainWorktree bool, branch string) *Allocation {
 	entry := al.Registry.Find(worktreePath)
 	if entry == nil {
 		return nil
@@ -140,10 +145,38 @@ func (al *Allocator) reuseExisting(worktreePath, worktreeName string) *Allocatio
 		return nil
 	}
 
+	project := al.ProjectConfig.Project()
+	if mainWorktree {
+		if base, ok := al.resolveReservation(project, branch); ok && base != ports[0] {
+			return nil
+		}
+	} else if branch != "" {
+		if base, ok := al.resolveBranchReservation(project, branch); ok && base != ports[0] {
+			return nil
+		}
+	}
+
+	reserved := al.UserConfig.ReservedPorts()
+	if reserved[ports[0]] {
+		isOwnReservation := false
+		if mainWorktree {
+			if base, ok := al.resolveReservation(project, branch); ok && base == ports[0] {
+				isOwnReservation = true
+			}
+		} else if branch != "" {
+			if base, ok := al.resolveBranchReservation(project, branch); ok && base == ports[0] {
+				isOwnReservation = true
+			}
+		}
+		if !isOwnReservation {
+			return nil
+		}
+	}
+
 	return alloc
 }
 
-func (al *Allocator) allocateMain(worktreePath, worktreeName string) (*Allocation, error) {
+func (al *Allocator) allocateMain(worktreePath, worktreeName, branch string) (*Allocation, error) {
 	count := al.ProjectConfig.PortsNeeded()
 	if count > al.UserConfig.PortIncrement() {
 		return nil, fmt.Errorf("ports_needed (%d) exceeds port.increment (%d); increase port.increment in your config.json to at least %d",
@@ -151,13 +184,11 @@ func (al *Allocator) allocateMain(worktreePath, worktreeName string) (*Allocatio
 	}
 
 	project := al.ProjectConfig.Project()
-	reservations := al.UserConfig.PortReservations()
-
 	var ports []int
-	if reserved, ok := reservations[project]; ok {
+	if base, ok := al.resolveReservation(project, branch); ok {
 		ports = make([]int, count)
 		for i := range count {
-			ports[i] = reserved + i
+			ports[i] = base + i
 		}
 	} else {
 		ports = al.nextAvailablePortsFrom(al.UserConfig.PortBase(), count)
@@ -174,19 +205,32 @@ func (al *Allocator) allocateMain(worktreePath, worktreeName string) (*Allocatio
 	}, nil
 }
 
-func (al *Allocator) allocateNew(worktreePath, worktreeName string) (*Allocation, error) {
+func (al *Allocator) allocateNew(worktreePath, worktreeName, branch string) (*Allocation, error) {
 	count := al.ProjectConfig.PortsNeeded()
 	if count > al.UserConfig.PortIncrement() {
 		return nil, fmt.Errorf("ports_needed (%d) exceeds port.increment (%d); increase port.increment in your config.json to at least %d",
 			count, al.UserConfig.PortIncrement(), count)
 	}
 
-	ports := al.nextAvailablePortsFrom(al.UserConfig.PortBase()+al.UserConfig.PortIncrement(), count)
+	project := al.ProjectConfig.Project()
+	var ports []int
+	if branch != "" {
+		if base, ok := al.resolveBranchReservation(project, branch); ok {
+			ports = make([]int, count)
+			for i := range count {
+				ports[i] = base + i
+			}
+		}
+	}
+	if ports == nil {
+		ports = al.nextAvailablePortsFrom(al.UserConfig.PortBase()+al.UserConfig.PortIncrement(), count)
+	}
+
 	redisDB, redisPrefix := al.allocateRedis(worktreeName)
 	database := al.buildDatabaseName(worktreeName)
 
 	return &Allocation{
-		Project:         al.ProjectConfig.Project(),
+		Project:         project,
 		Worktree:        worktreePath,
 		WorktreeName:    worktreeName,
 		Port:            ports[0],
@@ -196,6 +240,35 @@ func (al *Allocator) allocateNew(worktreePath, worktreeName string) (*Allocation
 		RedisDB:         redisDB,
 		RedisPrefix:     redisPrefix,
 	}, nil
+}
+
+// resolveReservation checks for a port reservation for a main repo.
+// Tries project/branch first (e.g. "salt/staging"), then project-only ("salt").
+func (al *Allocator) resolveReservation(project, branch string) (int, bool) {
+	reservations := al.UserConfig.PortReservations()
+	if len(reservations) == 0 {
+		return 0, false
+	}
+	if branch != "" {
+		if port, ok := reservations[project+"/"+branch]; ok {
+			return port, true
+		}
+	}
+	if port, ok := reservations[project]; ok {
+		return port, true
+	}
+	return 0, false
+}
+
+// resolveBranchReservation checks for a branch-specific reservation only
+// (e.g. "salt/staging"). Project-only keys don't match worktrees.
+func (al *Allocator) resolveBranchReservation(project, branch string) (int, bool) {
+	reservations := al.UserConfig.PortReservations()
+	if branch == "" || len(reservations) == 0 {
+		return 0, false
+	}
+	port, ok := reservations[project+"/"+branch]
+	return port, ok
 }
 
 func (al *Allocator) BuildRedisURL(alloc *Allocation) string {

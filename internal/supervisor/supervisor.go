@@ -34,6 +34,7 @@ type Supervisor struct {
 
 	mu           sync.Mutex
 	child        *exec.Cmd
+	childDone    chan struct{} // closed when current child's Wait() completes
 	listener     net.Listener
 	done         chan struct{}
 	shutdownOnce sync.Once
@@ -105,9 +106,12 @@ func (s *Supervisor) startChildLocked() error {
 		return fmt.Errorf("starting command: %w", err)
 	}
 	s.child = cmd
+	done := make(chan struct{})
+	s.childDone = done
 
 	go func() {
 		_ = cmd.Wait()
+		close(done)
 		s.mu.Lock()
 		if s.child == cmd {
 			s.child = nil
@@ -129,26 +133,22 @@ func (s *Supervisor) startChild() error {
 // blocking status queries.
 func (s *Supervisor) stopChildLocked() {
 	child := s.child
+	waitCh := s.childDone
 	if child == nil || child.Process == nil {
 		return
 	}
 	s.child = nil
+	s.childDone = nil
 	s.mu.Unlock()
 
 	_ = syscall.Kill(-child.Process.Pid, syscall.SIGTERM)
 
-	exited := make(chan struct{})
-	go func() {
-		child.Wait()
-		close(exited)
-	}()
-
 	select {
-	case <-exited:
+	case <-waitCh:
 	case <-time.After(10 * time.Second):
 		s.Log("==> Process didn't exit in 10s, sending SIGKILL")
 		_ = syscall.Kill(-child.Process.Pid, syscall.SIGKILL)
-		<-exited
+		<-waitCh
 	}
 
 	s.mu.Lock()

@@ -1,6 +1,10 @@
 ## [Unreleased]
 
-- **Port reservations** — pin a project's main branch to a stable port via `port.reservations` in user config. Reserved ports are excluded from the dynamic pool so worktrees never collide with them.
+- **Port reservations** — pin stable ports to projects or specific branches via `port.reservations` in user config. Project-level keys (`salt: 3000`) apply to the main repo; `project/branch` keys (`salt/staging: 3020`) pin a specific branch and take priority. Reserved ports block the full `port.increment` range so dynamic allocations never collide.
+- **`gtl refresh`** — re-allocate all registered worktrees with current config and reservations in one shot. Supervised servers are restarted automatically; manually-started servers are flagged for manual restart. Supports `--dry-run` and `--force`.
+- **`gtl port`** — prints the allocated port for the current worktree. Designed for agents and scripts that need the port without parsing status output.
+- **`AGENTS.md` integration** — `gtl init` now writes a treeline section to `AGENTS.md` (works with Cursor, Claude Code, and Codex) instead of `.cursor/rules/treeline.mdc`. Appends to existing `AGENTS.md` or `CLAUDE.md`, or creates `AGENTS.md` if neither exists. Includes `gtl port` as the primary port discovery instruction.
+- **Reservation-aware reuse** — `gtl setup` now detects when an existing allocation's port doesn't match a reservation (or conflicts with another project's reservation) and automatically re-allocates instead of reusing stale ports.
 - **Fix: stale port reuse** — re-running `gtl setup` after changing `ports_needed` in config now correctly re-allocates instead of reusing the old port count.
 - **Fix: `ProjectDefaults` env_file** — defaults now use the string shorthand form, matching the canonical config shape.
 - **Self-documenting templates** — `gtl init` generates `.treeline.yml` with commented-out optional config (ports_needed, Redis, editor, etc.) so available features are discoverable without reading docs. `ports_needed: 2` is never auto-emitted as active config.

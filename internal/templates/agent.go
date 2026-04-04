@@ -9,51 +9,48 @@ import (
 	"github.com/git-treeline/git-treeline/internal/detect"
 )
 
-// WriteAgentContext generates agent context files if the project already uses
-// a supported agent configuration format. Does nothing if no agent config
-// directory/file is found.
+const agentSectionHeader = "## Git Treeline"
+
+// WriteAgentContext writes or appends a treeline section to AGENTS.md.
+// If AGENTS.md exists, appends there. If only CLAUDE.md exists, appends there.
+// If neither exists, creates AGENTS.md. Returns the path written to.
 func WriteAgentContext(root, project string, det *detect.Result) (string, error) {
-	cursorRulesDir := filepath.Join(root, ".cursor", "rules")
-	cursorDir := filepath.Join(root, ".cursor")
+	agentsMD := filepath.Join(root, "AGENTS.md")
 	claudeMD := filepath.Join(root, "CLAUDE.md")
 
-	if dirExists(cursorRulesDir) || dirExists(cursorDir) {
-		return writeCursorRule(cursorRulesDir, project, det)
+	if fileExists(agentsMD) {
+		return appendSection(agentsMD, project, det)
 	}
-
 	if fileExists(claudeMD) {
-		return appendClaudeMD(claudeMD, project, det)
+		return appendSection(claudeMD, project, det)
 	}
 
-	return "", nil
+	return writeNewAgentsMD(agentsMD, project, det)
 }
 
-func writeCursorRule(rulesDir, project string, det *detect.Result) (string, error) {
-	_ = os.MkdirAll(rulesDir, 0o755)
-	path := filepath.Join(rulesDir, "treeline.mdc")
-	content := buildAgentContent(project, det)
-
-	rule := fmt.Sprintf(`---
-description: Git Treeline worktree resource management
-globs: ["**"]
----
-%s`, content)
-
-	if err := os.WriteFile(path, []byte(rule), 0o644); err != nil {
+func writeNewAgentsMD(path, project string, det *detect.Result) (string, error) {
+	content := agentSectionHeader + "\n\n" + buildAgentContent(project, det)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-func appendClaudeMD(path, project string, det *detect.Result) (string, error) {
-	content := buildAgentContent(project, det)
-	section := "\n## Git Treeline\n\n" + content
+func appendSection(path, project string, det *detect.Result) (string, error) {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if strings.Contains(string(existing), agentSectionHeader) {
+		return path, nil
+	}
+
+	section := "\n" + agentSectionHeader + "\n\n" + buildAgentContent(project, det)
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return "", err
 	}
-
 	if _, err := f.WriteString(section); err != nil {
 		_ = f.Close()
 		return "", err
@@ -63,10 +60,11 @@ func appendClaudeMD(path, project string, det *detect.Result) (string, error) {
 
 func buildAgentContent(project string, det *detect.Result) string {
 	var b strings.Builder
-	b.WriteString("This project uses git-treeline for worktree isolation.\n\n")
-	b.WriteString("- Check allocations: `gtl status --json`\n")
-	b.WriteString("- Check running services: `gtl status --check`\n")
-	b.WriteString("- Re-apply env after config changes: `gtl refresh .`\n")
+	b.WriteString("This project uses git-treeline for port and resource allocation.\n")
+	b.WriteString("**Do not assume port 3000.** Ports are dynamically allocated per worktree.\n\n")
+	b.WriteString("- Get the allocated port: `gtl port`\n")
+	b.WriteString("- Full allocation details: `gtl status --json`\n")
+	b.WriteString("- Check if services are running: `gtl status --check`\n")
 
 	envVars := []string{"PORT"}
 	switch det.Framework {
@@ -81,7 +79,7 @@ func buildAgentContent(project string, det *detect.Result) string {
 		}
 	}
 
-	fmt.Fprintf(&b, "- Allocated env vars: %s in %s\n", strings.Join(envVars, ", "), envTarget(det))
+	fmt.Fprintf(&b, "- Allocated env vars: %s in `%s`\n", strings.Join(envVars, ", "), envTarget(det))
 
 	if hint := PortHint(det); hint != "" {
 		b.WriteString("\n### Port wiring\n\n")
