@@ -209,31 +209,31 @@ func (r *Router) serveStatusPage(w http.ResponseWriter, _ *http.Request) {
 	routes := r.Routes()
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	fmt.Fprint(w, "<html><head><title>git-treeline router</title>")
-	fmt.Fprint(w, "<style>body{font-family:system-ui,sans-serif;max-width:600px;margin:40px auto;padding:0 20px;color:#333}a{color:#0969da}h1{font-size:1.4em}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:6px 12px;border-bottom:1px solid #eee}th{color:#666;font-weight:500}</style>")
-	fmt.Fprint(w, "</head><body>")
-	fmt.Fprint(w, "<h1>git-treeline router</h1>")
+	_, _ = fmt.Fprint(w, "<html><head><title>git-treeline router</title>")
+	_, _ = fmt.Fprint(w, "<style>body{font-family:system-ui,sans-serif;max-width:600px;margin:40px auto;padding:0 20px;color:#333}a{color:#0969da}h1{font-size:1.4em}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:6px 12px;border-bottom:1px solid #eee}th{color:#666;font-weight:500}</style>")
+	_, _ = fmt.Fprint(w, "</head><body>")
+	_, _ = fmt.Fprint(w, "<h1>git-treeline router</h1>")
 
 	if len(routes) == 0 {
-		fmt.Fprint(w, "<p>No active routes. Run <code>gtl setup</code> in a worktree.</p>")
+		_, _ = fmt.Fprint(w, "<p>No active routes. Run <code>gtl setup</code> in a worktree.</p>")
 	} else {
-		fmt.Fprint(w, "<table><tr><th>Route</th><th>Port</th></tr>")
+		_, _ = fmt.Fprint(w, "<table><tr><th>Route</th><th>Port</th></tr>")
 		for _, k := range sortedKeys(routes) {
 			href := fmt.Sprintf("%s://%s.localhost", r.scheme(), k)
-			fmt.Fprintf(w, "<tr><td><a href=%q>%s</a></td><td>%d</td></tr>", href, k, routes[k])
+			_, _ = fmt.Fprintf(w, "<tr><td><a href=%q>%s</a></td><td>%d</td></tr>", href, k, routes[k])
 		}
-		fmt.Fprint(w, "</table>")
+		_, _ = fmt.Fprint(w, "</table>")
 	}
-	fmt.Fprint(w, "</body></html>")
+	_, _ = fmt.Fprint(w, "</body></html>")
 }
 
 func (r *Router) serveNotFound(w http.ResponseWriter, subdomain string) {
 	routes := r.Routes()
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
-	fmt.Fprintf(w, "No route for %q\n\nAvailable routes:\n", subdomain)
+	_, _ = fmt.Fprintf(w, "No route for %q\n\nAvailable routes:\n", subdomain)
 	for _, k := range sortedKeys(routes) {
-		fmt.Fprintf(w, "  %s://%s.localhost\n", r.scheme(), k)
+		_, _ = fmt.Fprintf(w, "  %s://%s.localhost\n", r.scheme(), k)
 	}
 }
 

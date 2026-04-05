@@ -34,7 +34,7 @@ func nextJS(project, templateDB string, det *detect.Result) string {
 	fmt.Fprintf(&b, "project: %s\n", project)
 	writeMergeTarget(&b, det)
 
-	if !(det.HasPrisma && det.DBAdapter == "postgresql") {
+	if !det.HasPrisma || det.DBAdapter != "postgresql" {
 		b.WriteString("\n# database:\n")
 		b.WriteString("#   adapter: postgresql\n")
 		fmt.Fprintf(&b, "#   template: %s\n", templateDB)

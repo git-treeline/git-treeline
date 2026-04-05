@@ -169,7 +169,7 @@ func OfferInstall() bool {
 			fmt.Println("    Install via Homebrew?")
 			fmt.Print("    [y/N] ")
 			var answer string
-			fmt.Scanln(&answer)
+			_, _ = fmt.Scanln(&answer)
 			if answer != "y" && answer != "yes" {
 				fmt.Println("    Install manually: brew install cloudflared")
 				return false

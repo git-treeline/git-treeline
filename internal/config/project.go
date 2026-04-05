@@ -290,7 +290,7 @@ func (pc *ProjectConfig) migrateCommands() {
 		if s, ok := startCmd.(string); ok && s != "" {
 			content = strings.Replace(content, "start_command: "+s, "", 1)
 			// Clean up blank lines left behind
-			content = strings.Replace(content, "\n\n\n", "\n\n", -1)
+			content = strings.ReplaceAll(content, "\n\n\n", "\n\n")
 		}
 	}
 	_ = os.WriteFile(path, []byte(content), 0o644)

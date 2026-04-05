@@ -91,17 +91,21 @@ func installDarwinPortForward(routerPort int) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpAnchor.Name())
-	fmt.Fprint(tmpAnchor, anchorContent)
-	tmpAnchor.Close()
+	defer func() { _ = os.Remove(tmpAnchor.Name()) }()
+	if _, err := fmt.Fprint(tmpAnchor, anchorContent); err != nil {
+		return err
+	}
+	_ = tmpAnchor.Close()
 
 	tmpPfConf, err := os.CreateTemp("", "treeline-pfconf-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpPfConf.Name())
-	fmt.Fprint(tmpPfConf, modifiedPfConf)
-	tmpPfConf.Close()
+	defer func() { _ = os.Remove(tmpPfConf.Name()) }()
+	if _, err := fmt.Fprint(tmpPfConf, modifiedPfConf); err != nil {
+		return err
+	}
+	_ = tmpPfConf.Close()
 
 	script := fmt.Sprintf(
 		"cp '%s' '%s' && mkdir -p /etc/pf.anchors && cp '%s' '%s' && cp '%s' '%s' && pfctl -ef '%s' 2>/dev/null; true",
@@ -144,9 +148,11 @@ func uninstallDarwinPortForward() error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmpPfConf.Name())
-	fmt.Fprint(tmpPfConf, cleaned)
-	tmpPfConf.Close()
+	defer func() { _ = os.Remove(tmpPfConf.Name()) }()
+	if _, err := fmt.Fprint(tmpPfConf, cleaned); err != nil {
+		return err
+	}
+	_ = tmpPfConf.Close()
 
 	script := fmt.Sprintf(
 		"cp '%s' '%s' && rm -f '%s' && pfctl -f '%s' 2>/dev/null; true",

@@ -70,7 +70,9 @@ func testRegistry(t *testing.T, allocs []registry.Allocation) *registry.Registry
 	path := filepath.Join(dir, "registry.json")
 	data := registry.RegistryData{Version: 1, Allocations: allocs}
 	raw, _ := json.Marshal(data)
-	os.WriteFile(path, raw, 0o644)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	return registry.New(path)
 }
 
@@ -79,11 +81,11 @@ func TestRouterRoutesRequest(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "hello from salt")
+		_, _ = fmt.Fprint(w, "hello from salt")
 	})
 	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
 	go func() { _ = target.ListenAndServe() }()
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 	waitForPort(t, targetPort)
 
 	reg := testRegistry(t, []registry.Allocation{
@@ -105,7 +107,7 @@ func TestRouterRoutesRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "hello from salt" {
@@ -128,7 +130,7 @@ func TestRouterStatusPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -151,7 +153,7 @@ func TestRouterNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
@@ -163,7 +165,9 @@ func TestRouterRefreshPicksUpNewAllocations(t *testing.T) {
 	path := filepath.Join(dir, "registry.json")
 	data := registry.RegistryData{Version: 1, Allocations: []registry.Allocation{}}
 	raw, _ := json.Marshal(data)
-	os.WriteFile(path, raw, 0o644)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	reg := registry.New(path)
 	router := NewRouter(3000, reg)
@@ -176,7 +180,9 @@ func TestRouterRefreshPicksUpNewAllocations(t *testing.T) {
 		{"project": "salt", "branch": "main", "port": float64(3001), "ports": []any{float64(3001)}, "worktree": "/tmp/salt"},
 	}
 	raw, _ = json.Marshal(data)
-	os.WriteFile(path, raw, 0o644)
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	router.refreshRoutes()
 	routes := router.Routes()

@@ -123,8 +123,11 @@ var serveUninstallCmd = &cobra.Command{
 			}
 		}
 
-		proxy.UntrustCA()
-		fmt.Println("CA trust removed.")
+		if err := proxy.UntrustCA(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not remove CA trust: %v\n", err)
+		} else {
+			fmt.Println("CA trust removed.")
+		}
 		return nil
 	},
 }

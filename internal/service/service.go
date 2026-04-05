@@ -103,7 +103,6 @@ func installLaunchAgent(gtlPath string, _ int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
 	err = plistTemplate.Execute(f, struct {
 		Label   string
@@ -114,6 +113,9 @@ func installLaunchAgent(gtlPath string, _ int) (string, error) {
 		GtlPath: gtlPath,
 		LogDir:  logDir(),
 	})
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return "", err
 	}
@@ -167,9 +169,12 @@ func installSystemd(gtlPath string, _ int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
 
-	if err := unitTemplate.Execute(f, struct{ GtlPath string }{GtlPath: gtlPath}); err != nil {
+	err = unitTemplate.Execute(f, struct{ GtlPath string }{GtlPath: gtlPath})
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
 		return "", err
 	}
 

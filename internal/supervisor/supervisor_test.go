@@ -76,7 +76,7 @@ func TestSupervisor_StopAndResume(t *testing.T) {
 	}
 
 	// Shutdown supervisor entirely
-	Send(sock, "shutdown")
+	_, _ = Send(sock, "shutdown")
 	select {
 	case <-errCh:
 	case <-time.After(5 * time.Second):
@@ -151,7 +151,7 @@ func TestSupervisor_Restart(t *testing.T) {
 		t.Errorf("expected at least 2 PIDs (start + restart), got %d: %q", len(lines), string(data))
 	}
 
-	Send(sock, "shutdown")
+	_, _ = Send(sock, "shutdown")
 	<-errCh
 }
 

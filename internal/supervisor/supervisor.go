@@ -60,7 +60,7 @@ func (s *Supervisor) Run() error {
 	_ = os.Chmod(s.SocketPath, 0600)
 	s.listener = ln
 	defer func() {
-		ln.Close()
+		_ = ln.Close()
 		_ = os.Remove(s.SocketPath)
 	}()
 
@@ -182,8 +182,8 @@ func (s *Supervisor) acceptLoop() {
 }
 
 func (s *Supervisor) handleConn(conn net.Conn) {
-	defer conn.Close()
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	buf := make([]byte, 64)
 	n, err := conn.Read(buf)
 	if err != nil {
@@ -194,44 +194,44 @@ func (s *Supervisor) handleConn(conn net.Conn) {
 	switch cmd {
 	case "restart":
 		if err := s.restart(); err != nil {
-			fmt.Fprintf(conn, "error: %s", err)
+			_, _ = fmt.Fprintf(conn, "error: %s", err)
 			return
 		}
-		fmt.Fprint(conn, "ok")
+		_, _ = fmt.Fprint(conn, "ok")
 	case "start":
 		s.mu.Lock()
 		if s.child != nil {
 			s.mu.Unlock()
-			fmt.Fprint(conn, "already running")
+			_, _ = fmt.Fprint(conn, "already running")
 			return
 		}
 		err := s.startChildLocked()
 		s.mu.Unlock()
 		if err != nil {
-			fmt.Fprintf(conn, "error: %s", err)
+			_, _ = fmt.Fprintf(conn, "error: %s", err)
 			return
 		}
-		fmt.Fprint(conn, "ok")
+		_, _ = fmt.Fprint(conn, "ok")
 	case "stop":
 		s.Log("\n==> Server stopped. Supervisor waiting...")
 		s.stopChild()
-		fmt.Fprint(conn, "ok")
+		_, _ = fmt.Fprint(conn, "ok")
 	case "shutdown":
 		s.Log("\n==> Shutting down supervisor...")
 		s.stopChild()
-		fmt.Fprint(conn, "ok")
+		_, _ = fmt.Fprint(conn, "ok")
 		s.shutdownOnce.Do(func() { close(s.done) })
 	case "status":
 		s.mu.Lock()
 		running := s.child != nil && s.child.Process != nil
 		s.mu.Unlock()
 		if running {
-			fmt.Fprint(conn, "running")
+			_, _ = fmt.Fprint(conn, "running")
 		} else {
-			fmt.Fprint(conn, "stopped")
+			_, _ = fmt.Fprint(conn, "stopped")
 		}
 	default:
-		fmt.Fprintf(conn, "unknown command: %s", cmd)
+		_, _ = fmt.Fprintf(conn, "unknown command: %s", cmd)
 	}
 }
 
@@ -242,9 +242,9 @@ func Send(socketPath, command string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("server not running (no socket at %s)", socketPath)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
-	conn.SetDeadline(time.Now().Add(30 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
 	if _, err := conn.Write([]byte(command)); err != nil {
 		return "", fmt.Errorf("sending command: %w", err)
 	}

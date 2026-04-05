@@ -17,7 +17,7 @@ func freePort(t *testing.T) int {
 		t.Fatal(err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
+	_ = ln.Close()
 	return port
 }
 
@@ -27,11 +27,11 @@ func TestProxyForwardsHTTP(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "world")
+		_, _ = fmt.Fprint(w, "world")
 	})
 	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
 	go func() { _ = target.ListenAndServe() }()
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 	waitForPort(t, targetPort)
 
 	go func() {
@@ -43,7 +43,7 @@ func TestProxyForwardsHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "world" {
@@ -63,7 +63,7 @@ func TestProxyPreservesHostHeader(t *testing.T) {
 	})
 	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
 	go func() { _ = target.ListenAndServe() }()
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 	waitForPort(t, targetPort)
 
 	go func() {
@@ -77,7 +77,7 @@ func TestProxyPreservesHostHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if receivedHost != "myapp.localhost" {
 		t.Errorf("expected host 'myapp.localhost', got %q", receivedHost)
@@ -90,11 +90,11 @@ func TestProxyTLSTermination(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/secure", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, "ok")
+		_, _ = fmt.Fprint(w, "ok")
 	})
 	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
 	go func() { _ = target.ListenAndServe() }()
-	defer target.Close()
+	defer func() { _ = target.Close() }()
 	waitForPort(t, targetPort)
 
 	go func() {
@@ -111,7 +111,7 @@ func TestProxyTLSTermination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TLS request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "ok" {
@@ -125,7 +125,7 @@ func waitForPort(t *testing.T, port int) {
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 100*time.Millisecond)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return
 		}
 		time.Sleep(50 * time.Millisecond)
