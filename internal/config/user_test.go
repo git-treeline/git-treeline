@@ -353,6 +353,87 @@ func TestUserConfig_TunnelConfigs_Empty(t *testing.T) {
 	}
 }
 
+func TestUserConfig_DeleteTunnel_NonDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"tunnel":{"default":"gtl","tunnels":{"gtl":{"domain":"myteam.dev"},"gtl-personal":{"domain":"personal.dev"}}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	newDefault := uc.DeleteTunnel("gtl-personal")
+	if err := uc.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if newDefault != "gtl" {
+		t.Errorf("expected default unchanged as 'gtl', got %q", newDefault)
+	}
+	reloaded := LoadUserConfig(path)
+	if len(reloaded.TunnelConfigs()) != 1 {
+		t.Errorf("expected 1 tunnel remaining, got %d", len(reloaded.TunnelConfigs()))
+	}
+	if reloaded.TunnelDomain("gtl-personal") != "" {
+		t.Error("expected deleted tunnel to be gone")
+	}
+}
+
+func TestUserConfig_DeleteTunnel_Default_PromotesAnother(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"tunnel":{"default":"gtl","tunnels":{"gtl":{"domain":"myteam.dev"},"gtl-personal":{"domain":"personal.dev"}}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	newDefault := uc.DeleteTunnel("gtl")
+	if err := uc.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if newDefault != "gtl-personal" {
+		t.Errorf("expected promoted default 'gtl-personal', got %q", newDefault)
+	}
+	reloaded := LoadUserConfig(path)
+	if reloaded.TunnelDefault() != "gtl-personal" {
+		t.Errorf("expected persisted default 'gtl-personal', got %q", reloaded.TunnelDefault())
+	}
+}
+
+func TestUserConfig_DeleteTunnel_LastOne(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"tunnel":{"default":"gtl","tunnels":{"gtl":{"domain":"myteam.dev"}}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	newDefault := uc.DeleteTunnel("gtl")
+	if err := uc.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	if newDefault != "" {
+		t.Errorf("expected empty default, got %q", newDefault)
+	}
+	reloaded := LoadUserConfig(path)
+	if reloaded.TunnelDefault() != "" {
+		t.Errorf("expected empty default after reload, got %q", reloaded.TunnelDefault())
+	}
+	if len(reloaded.TunnelConfigs()) != 0 {
+		t.Errorf("expected 0 tunnels, got %d", len(reloaded.TunnelConfigs()))
+	}
+}
+
+func TestUserConfig_DeleteTunnel_Nonexistent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"tunnel":{"default":"gtl","tunnels":{"gtl":{"domain":"myteam.dev"}}}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	newDefault := uc.DeleteTunnel("nope")
+	if newDefault != "gtl" {
+		t.Errorf("expected default unchanged, got %q", newDefault)
+	}
+	if len(uc.TunnelConfigs()) != 1 {
+		t.Errorf("expected 1 tunnel unchanged, got %d", len(uc.TunnelConfigs()))
+	}
+}
+
 // --- Migration from legacy tunnel config ---
 
 func TestUserConfig_TunnelMigration_LegacyFormat(t *testing.T) {

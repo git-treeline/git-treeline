@@ -539,7 +539,7 @@ Controls allocation policy for your machine. Created automatically by `gtl init`
 
 **Router config:** `router.port` sets the port the subdomain router listens on (default 3001). Port 443 is forwarded here by `gtl serve install`.
 
-**Tunnel config:** `tunnel.tunnels` stores named tunnel configurations, each with a domain. `tunnel.default` selects which tunnel is used when no `--tunnel` flag is passed. Run `gtl tunnel setup` to add tunnels interactively. Use `gtl tunnel default <name>` to switch the default. Old configs (`tunnel.name`/`tunnel.domain`) are auto-migrated on first load.
+**Tunnel config:** `tunnel.tunnels` stores named tunnel configurations, each with a domain. `tunnel.default` selects which tunnel is used when no `--tunnel` flag is passed. Run `gtl tunnel setup` to add tunnels interactively. Use `gtl tunnel default <name>` to switch the active default. Use `gtl tunnel remove <name>` to delete a tunnel from config (does not affect the Cloudflare tunnel itself). Old configs (`tunnel.name`/`tunnel.domain`) are auto-migrated on first load.
 
 **Editor detection:** `gtl init` auto-detects your editor (Cursor, VS Code, Zed, JetBrains) and stores `editor.name`. The menulet uses this for "Open in Editor" labels. If detection fails, no name is stored — override manually with `gtl config set editor.name cursor`. The `themes` and `colors` maps are per-project or per-branch overrides for the `editor.theme` and `editor.color` settings in `.treeline.yml`.
 
@@ -712,6 +712,7 @@ gtl db name --json         # {"database": "myapp_feature_xyz"}
 | `gtl tunnel setup` | | Interactive setup for named tunnels with BYO domain |
 | `gtl tunnel status` | | Show all tunnel configurations and readiness |
 | `gtl tunnel default [name]` | | Get or set the default tunnel configuration |
+| `gtl tunnel remove <name>` | | Remove a named tunnel from local config |
 | `gtl share [port]` | `--tunnel` `--tailscale` | Private share URL (Cloudflare token-gated or Tailscale tailnet) |
 | `gtl config` | | Show or initialize user-level config |
 | `gtl db` | `name` `reset` `restore` `drop` — `name --json` | Manage worktree databases |

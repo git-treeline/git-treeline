@@ -29,6 +29,7 @@ func init() {
 	tunnelCmd.AddCommand(tunnelSetupCmd)
 	tunnelCmd.AddCommand(tunnelStatusCmd)
 	tunnelCmd.AddCommand(tunnelDefaultCmd)
+	tunnelCmd.AddCommand(tunnelRemoveCmd)
 	rootCmd.AddCommand(tunnelCmd)
 }
 
@@ -296,6 +297,42 @@ With an argument, sets the default to the named tunnel config.
 			return fmt.Errorf("failed to save config: %w", err)
 		}
 		fmt.Printf("Default tunnel set to %q\n", name)
+		return nil
+	},
+}
+
+var tunnelRemoveCmd = &cobra.Command{
+	Use:   "remove <name>",
+	Short: "Remove a named tunnel configuration",
+	Long: `Remove a tunnel from the local config. Does not delete the Cloudflare tunnel
+itself — run 'cloudflared tunnel delete <name>' separately if needed.
+
+If the removed tunnel was the default and other tunnels remain, another is
+promoted automatically. If it was the last tunnel, gtl falls back to quick
+tunnels (random *.trycloudflare.com URLs).`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		uc := config.LoadUserConfig("")
+		name := args[0]
+
+		configs := uc.TunnelConfigs()
+		if _, ok := configs[name]; !ok {
+			return fmt.Errorf("tunnel %q not found in config\nAvailable: %v", name, tunnelConfigNames(configs))
+		}
+
+		wasDefault := uc.TunnelDefault() == name
+		newDefault := uc.DeleteTunnel(name)
+		if err := uc.Save(); err != nil {
+			return fmt.Errorf("failed to save config: %w", err)
+		}
+
+		fmt.Printf("Removed tunnel %q from config.\n", name)
+		if wasDefault && newDefault != "" {
+			fmt.Printf("Default tunnel is now %q.\n", newDefault)
+		} else if wasDefault {
+			fmt.Println("No tunnels remaining — gtl tunnel will use quick tunnels (random URLs).")
+		}
+		fmt.Printf("\nTo also delete the Cloudflare tunnel: cloudflared tunnel delete %s\n", name)
 		return nil
 	},
 }

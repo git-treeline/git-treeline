@@ -158,6 +158,27 @@ func (uc *UserConfig) TunnelConfigs() map[string]string {
 	return result
 }
 
+// DeleteTunnel removes a named tunnel from config. Returns the new default
+// name (may be empty if no tunnels remain). Does not call Save().
+func (uc *UserConfig) DeleteTunnel(name string) string {
+	tunnels, ok := Dig(uc.Data, "tunnel", "tunnels").(map[string]any)
+	if !ok {
+		return uc.TunnelDefault()
+	}
+	delete(tunnels, name)
+
+	if uc.TunnelDefault() != name {
+		return uc.TunnelDefault()
+	}
+	newDefault := ""
+	for remaining := range tunnels {
+		newDefault = remaining
+		break
+	}
+	uc.Set("tunnel.default", newDefault)
+	return newDefault
+}
+
 // EditorName returns the stored editor name (e.g. "cursor", "vscode"), or empty.
 func (uc *UserConfig) EditorName() string {
 	if v, ok := Dig(uc.Data, "editor", "name").(string); ok {
