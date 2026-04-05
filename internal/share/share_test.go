@@ -85,7 +85,7 @@ func TestTokenHandler_TokenPath_SetsCookieAndRedirects(t *testing.T) {
 func TestTokenHandler_ValidCookie_Proxies(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok from backend"))
+		_, _ = w.Write([]byte("ok from backend"))
 	}))
 	defer backend.Close()
 
