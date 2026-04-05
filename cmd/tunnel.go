@@ -10,9 +10,11 @@ import (
 
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/confirm"
+	"github.com/git-treeline/git-treeline/internal/detect"
 	"github.com/git-treeline/git-treeline/internal/format"
 	"github.com/git-treeline/git-treeline/internal/proxy"
 	"github.com/git-treeline/git-treeline/internal/registry"
+	"github.com/git-treeline/git-treeline/internal/templates"
 	"github.com/git-treeline/git-treeline/internal/tunnel"
 	"github.com/git-treeline/git-treeline/internal/worktree"
 	"github.com/spf13/cobra"
@@ -71,6 +73,8 @@ Related commands:
 			project, branch := resolveProjectAndBranch(entry)
 			if project != "" {
 				routeKey := proxy.RouteKey(project, branch)
+				hostname := routeKey + "." + domain
+				printTunnelHint(hostname, domain)
 				return tunnel.RunNamed(tunnelName, domain, routeKey, port)
 			}
 
@@ -78,6 +82,7 @@ Related commands:
 			fmt.Fprintf(os.Stderr, "  For a named tunnel at *.%s, run from inside a git repo with a .treeline.yml.\n\n", domain)
 		}
 
+		printTunnelHint("", "")
 		return tunnel.RunQuick(port)
 	},
 }
@@ -330,4 +335,18 @@ func findAllocationForCwd() format.Allocation {
 		return nil
 	}
 	return format.Allocation(entry)
+}
+
+func printTunnelHint(hostname, domain string) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	absPath, _ := filepath.Abs(cwd)
+	det := detect.Detect(absPath)
+	hint := templates.TunnelHint(det, hostname, domain)
+	if formatted := templates.FormatTunnelHint(hint); formatted != "" {
+		fmt.Fprint(os.Stderr, formatted)
+		fmt.Fprintln(os.Stderr)
+	}
 }

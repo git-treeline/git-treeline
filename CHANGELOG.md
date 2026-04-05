@@ -2,6 +2,7 @@
 
 - **`--json` everywhere** — `gtl doctor`, `gtl port`, and `gtl db name` now accept `--json` for structured output. `gtl status --json` auto-probes port listening and supervisor state without requiring `--check`.
 - **`gtl new` shows serve URL** — after creating a worktree, `gtl new` prints the HTTPS router URL when `gtl serve` is running, matching the behavior of `gtl setup`.
+- **Tunnel host hints** — `gtl tunnel` detects the project framework and prints the exact config change needed to whitelist the tunnel domain. Covers Rails (`config.hosts`), Vite (`server.allowedHosts`), and Django (`ALLOWED_HOSTS`). Named tunnels show the wildcard for your domain; quick tunnels suggest `.trycloudflare.com`.
 
 ## [0.25.0]
 
