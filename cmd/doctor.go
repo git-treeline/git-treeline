@@ -6,12 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/git-treeline/git-treeline/internal/allocator"
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/detect"
 	"github.com/git-treeline/git-treeline/internal/format"
+	"github.com/git-treeline/git-treeline/internal/proxy"
 	"github.com/git-treeline/git-treeline/internal/registry"
+	"github.com/git-treeline/git-treeline/internal/service"
 	"github.com/git-treeline/git-treeline/internal/supervisor"
 	"github.com/git-treeline/git-treeline/internal/templates"
 	"github.com/git-treeline/git-treeline/internal/worktree"
@@ -45,6 +48,7 @@ var doctorCmd = &cobra.Command{
 		doctorConfig(pc, det, absPath)
 		doctorAllocation(absPath)
 		doctorRuntime(absPath)
+		doctorServe()
 		doctorDiagnostics(det)
 
 		return nil
@@ -95,6 +99,31 @@ func doctorJSONOutput(pc *config.ProjectConfig, det *detect.Result, absPath stri
 		rt["supervisor"] = "not running"
 	}
 	result["runtime"] = rt
+
+	uc := config.LoadUserConfig("")
+	servePort := uc.RouterPort()
+	checks := service.CheckHealth(servePort)
+	serveInfo := map[string]any{}
+	for _, c := range checks {
+		entry := map[string]any{"status": c.Status, "detail": c.Detail}
+		if c.Fix != "" {
+			entry["fix"] = c.Fix
+		}
+		serveInfo[c.Name] = entry
+	}
+	if proxy.IsCAInstalled() {
+		expiry, err := proxy.CACertExpiry()
+		if err != nil {
+			serveInfo["ca_cert"] = map[string]any{"status": "warn", "detail": err.Error()}
+		} else if time.Now().After(expiry) {
+			serveInfo["ca_cert"] = map[string]any{"status": "error", "detail": "expired", "expires": expiry.Format(time.RFC3339)}
+		} else {
+			serveInfo["ca_cert"] = map[string]any{"status": "ok", "expires": expiry.Format(time.RFC3339)}
+		}
+	} else {
+		serveInfo["ca_cert"] = map[string]any{"status": "not_installed"}
+	}
+	result["serve"] = serveInfo
 
 	diags := templates.Diagnose(det)
 	if len(diags) > 0 {
@@ -190,6 +219,56 @@ func doctorRuntime(absPath string) {
 		doctorLine("Supervisor", resp)
 	} else {
 		doctorLine("Supervisor", "not running")
+	}
+}
+
+func doctorServe() {
+	uc := config.LoadUserConfig("")
+	port := uc.RouterPort()
+
+	fmt.Println("\nServe")
+
+	displayNames := map[string]string{
+		"service":         "Service",
+		"binary":          "Binary",
+		"router_port":     "Router port",
+		"port_forwarding": "Port forwarding",
+	}
+
+	checks := service.CheckHealth(port)
+	for _, c := range checks {
+		label := displayNames[c.Name]
+		if label == "" {
+			label = c.Name
+		}
+		switch c.Status {
+		case "ok":
+			doctorLine(label, c.Detail)
+		case "warn":
+			doctorLine(label, "⚠ "+c.Detail)
+			if c.Fix != "" {
+				fmt.Printf("    fix: %s\n", c.Fix)
+			}
+		case "error":
+			doctorLine(label, "✗ "+c.Detail)
+			if c.Fix != "" {
+				fmt.Printf("    fix: %s\n", c.Fix)
+			}
+		}
+	}
+
+	if proxy.IsCAInstalled() {
+		expiry, err := proxy.CACertExpiry()
+		if err != nil {
+			doctorLine("CA cert", "⚠ could not read: "+err.Error())
+		} else if time.Now().After(expiry) {
+			doctorLine("CA cert", "✗ expired on "+expiry.Format("2006-01-02"))
+			fmt.Println("    fix: gtl serve uninstall && gtl serve install")
+		} else {
+			doctorLine("CA cert", "ok (expires "+expiry.Format("2006-01-02")+")")
+		}
+	} else {
+		doctorLine("CA cert", "not installed")
 	}
 }
 

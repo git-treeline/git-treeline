@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -109,69 +110,163 @@ func TestEnsureCA_Idempotent(t *testing.T) {
 	}
 }
 
-func TestEnsureServerCert_GeneratesValidCert(t *testing.T) {
+func TestNewCertManager_WithoutCA_Fails(t *testing.T) {
 	withTempCertsDir(t)
 
+	_, err := NewCertManager()
+	if err == nil {
+		t.Error("expected error when CA doesn't exist")
+	}
+}
+
+func TestCertManager_GetCertificate(t *testing.T) {
+	withTempCertsDir(t)
 	if _, err := EnsureCA(); err != nil {
-		t.Fatalf("EnsureCA failed: %v", err)
+		t.Fatalf("EnsureCA: %v", err)
 	}
 
-	cert, err := EnsureServerCert()
+	cm, err := NewCertManager()
 	if err != nil {
-		t.Fatalf("EnsureServerCert failed: %v", err)
+		t.Fatalf("NewCertManager: %v", err)
 	}
 
-	if len(cert.Certificate) == 0 {
-		t.Fatal("expected at least one certificate")
+	hello := &tls.ClientHelloInfo{ServerName: "website-main.localhost"}
+	cert, err := cm.GetCertificate(hello)
+	if err != nil {
+		t.Fatalf("GetCertificate: %v", err)
 	}
 
 	leaf, err := x509.ParseCertificate(cert.Certificate[0])
 	if err != nil {
-		t.Fatalf("parsing leaf cert: %v", err)
+		t.Fatalf("parsing leaf: %v", err)
 	}
 
-	foundLocalhost := false
+	found := false
 	for _, name := range leaf.DNSNames {
-		if name == "*.localhost" {
-			foundLocalhost = true
+		if name == "website-main.localhost" {
+			found = true
 		}
 	}
-	if !foundLocalhost {
-		t.Errorf("expected *.localhost in SAN, got %v", leaf.DNSNames)
+	if !found {
+		t.Errorf("expected website-main.localhost in SAN, got %v", leaf.DNSNames)
+	}
+
+	if len(cert.Certificate) != 2 {
+		t.Errorf("expected cert chain of length 2 (leaf + CA), got %d", len(cert.Certificate))
 	}
 }
 
-func TestEnsureServerCert_ReusesCached(t *testing.T) {
+func TestCertManager_CachesPerHostname(t *testing.T) {
 	withTempCertsDir(t)
-
 	if _, err := EnsureCA(); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := EnsureServerCert()
+	cm, err := NewCertManager()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	info, _ := os.Stat(serverCertPath())
-	firstMod := info.ModTime()
+	hello := &tls.ClientHelloInfo{ServerName: "app-main.localhost"}
+	cert1, _ := cm.GetCertificate(hello)
+	cert2, _ := cm.GetCertificate(hello)
 
-	_, err = EnsureServerCert()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	info2, _ := os.Stat(serverCertPath())
-	if info2.ModTime() != firstMod {
-		t.Error("server cert was regenerated on second call")
+	if &cert1.Certificate[0][0] != &cert2.Certificate[0][0] {
+		t.Error("expected same cert pointer on second call (cache hit)")
 	}
 }
 
-func TestEnsureServerCert_WithoutCA_Fails(t *testing.T) {
+func TestCertManager_DifferentHostnames(t *testing.T) {
 	withTempCertsDir(t)
+	if _, err := EnsureCA(); err != nil {
+		t.Fatal(err)
+	}
 
-	_, err := EnsureServerCert()
-	if err == nil {
-		t.Error("expected error when CA doesn't exist")
+	cm, err := NewCertManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c1, _ := cm.GetCertificate(&tls.ClientHelloInfo{ServerName: "a.localhost"})
+	c2, _ := cm.GetCertificate(&tls.ClientHelloInfo{ServerName: "b.localhost"})
+
+	leaf1, _ := x509.ParseCertificate(c1.Certificate[0])
+	leaf2, _ := x509.ParseCertificate(c2.Certificate[0])
+
+	if leaf1.SerialNumber.Cmp(leaf2.SerialNumber) == 0 {
+		t.Error("expected different serial numbers for different hostnames")
+	}
+}
+
+func TestCertManager_EmptyServerName(t *testing.T) {
+	withTempCertsDir(t)
+	if _, err := EnsureCA(); err != nil {
+		t.Fatal(err)
+	}
+
+	cm, err := NewCertManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, err := cm.GetCertificate(&tls.ClientHelloInfo{ServerName: ""})
+	if err != nil {
+		t.Fatalf("GetCertificate with empty ServerName: %v", err)
+	}
+
+	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
+	if leaf.Subject.CommonName != "localhost" {
+		t.Errorf("expected CN=localhost for empty ServerName, got %s", leaf.Subject.CommonName)
+	}
+}
+
+func TestCertManager_ConcurrentAccess(t *testing.T) {
+	withTempCertsDir(t)
+	if _, err := EnsureCA(); err != nil {
+		t.Fatal(err)
+	}
+
+	cm, err := NewCertManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, err := cm.GetCertificate(&tls.ClientHelloInfo{ServerName: "race.localhost"})
+			if err != nil {
+				t.Errorf("concurrent GetCertificate failed: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestCertManager_VerifiesAgainstCA(t *testing.T) {
+	withTempCertsDir(t)
+	if _, err := EnsureCA(); err != nil {
+		t.Fatal(err)
+	}
+
+	cm, err := NewCertManager()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, _ := cm.GetCertificate(&tls.ClientHelloInfo{ServerName: "test-feat.localhost"})
+
+	roots := x509.NewCertPool()
+	roots.AddCert(cm.caCert)
+
+	leaf, _ := x509.ParseCertificate(cert.Certificate[0])
+	_, err = leaf.Verify(x509.VerifyOptions{
+		Roots:   roots,
+		DNSName: "test-feat.localhost",
+	})
+	if err != nil {
+		t.Errorf("cert did not verify against CA for hostname: %v", err)
 	}
 }
