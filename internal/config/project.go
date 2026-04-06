@@ -228,6 +228,26 @@ func (pc *ProjectConfig) EditorTheme() string {
 	return e["theme"]
 }
 
+// Aliases returns static alias routes from the project config (e.g.
+// {"redis-ui": 8081}). These are team-shared routes for sidecars or
+// services that manage their own ports.
+func (pc *ProjectConfig) Aliases() map[string]int {
+	raw, ok := pc.Data["aliases"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := make(map[string]int, len(raw))
+	for name, v := range raw {
+		switch p := v.(type) {
+		case int:
+			result[name] = p
+		case float64:
+			result[name] = int(p)
+		}
+	}
+	return result
+}
+
 func (pc *ProjectConfig) StartCommand() string {
 	if v, ok := Dig(pc.Data, "commands", "start").(string); ok {
 		return v

@@ -112,6 +112,30 @@ func (uc *UserConfig) RouterPort() int {
 	return 3001
 }
 
+// RouterDomain returns the base domain for local routing. Default: "localhost".
+func (uc *UserConfig) RouterDomain() string {
+	if v, ok := Dig(uc.Data, "router", "domain").(string); ok && v != "" {
+		return v
+	}
+	return "localhost"
+}
+
+// RouterAliases returns static alias routes from the user config (e.g.
+// {"grafana": 3100}). These are per-machine routes for personal services.
+func (uc *UserConfig) RouterAliases() map[string]int {
+	raw, ok := Dig(uc.Data, "router", "aliases").(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := make(map[string]int, len(raw))
+	for name, v := range raw {
+		if f, ok := v.(float64); ok {
+			result[name] = int(f)
+		}
+	}
+	return result
+}
+
 // TunnelDefault returns the name of the default tunnel config, or "".
 func (uc *UserConfig) TunnelDefault() string {
 	if v, ok := Dig(uc.Data, "tunnel", "default").(string); ok {

@@ -508,6 +508,44 @@ func TestUserConfig_TunnelMigration_NoopIfAlreadyNew(t *testing.T) {
 	}
 }
 
+func TestUserConfig_RouterDomain_Default(t *testing.T) {
+	uc := LoadUserConfig(filepath.Join(t.TempDir(), "config.json"))
+	if uc.RouterDomain() != "localhost" {
+		t.Errorf("expected default domain 'localhost', got %q", uc.RouterDomain())
+	}
+}
+
+func TestUserConfig_RouterDomain_Custom(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"router":{"domain":"test"}}`), 0o644)
+	uc := LoadUserConfig(path)
+	if uc.RouterDomain() != "test" {
+		t.Errorf("expected 'test', got %q", uc.RouterDomain())
+	}
+}
+
+func TestUserConfig_RouterAliases(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"router":{"aliases":{"grafana":3100,"pgweb":8082}}}`), 0o644)
+	uc := LoadUserConfig(path)
+	aliases := uc.RouterAliases()
+	if aliases["grafana"] != 3100 {
+		t.Errorf("expected grafana=3100, got %d", aliases["grafana"])
+	}
+	if aliases["pgweb"] != 8082 {
+		t.Errorf("expected pgweb=8082, got %d", aliases["pgweb"])
+	}
+}
+
+func TestUserConfig_RouterAliases_Empty(t *testing.T) {
+	uc := LoadUserConfig(filepath.Join(t.TempDir(), "config.json"))
+	if aliases := uc.RouterAliases(); len(aliases) != 0 {
+		t.Errorf("expected no aliases, got %v", aliases)
+	}
+}
+
 func TestUserConfig_Save_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
