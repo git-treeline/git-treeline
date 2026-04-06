@@ -41,7 +41,7 @@ brews:
         2. gtl init              Initialize your first project
         3. gtl setup             Allocate ports for this worktree
 
-      Docs: https://gittreeline.com/docs/#getting-started
+      Docs: https://git-treeline.dev/docs/#getting-started
 
 changelog:
   sort: asc

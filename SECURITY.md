@@ -18,4 +18,4 @@ The router process itself runs unprivileged. Privilege is used once during insta
 
 ## Reporting vulnerabilities
 
-If you find a security issue, please email security@gittreeline.com rather than opening a public issue.
+If you find a security issue, please email security@productmatter.co rather than opening a public issue.
