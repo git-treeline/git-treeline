@@ -4,9 +4,11 @@ package tunnel
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -15,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // RunQuick starts a Cloudflare quick tunnel exposing the given local port.
@@ -207,6 +210,19 @@ func IsLoggedIn() bool {
 	return err == nil
 }
 
+// IsLoggedInForDomain checks whether we have a domain-specific cert for the given domain.
+func IsLoggedInForDomain(domain string) bool {
+	certPath := CertPathForDomain(domain)
+	_, err := os.Stat(certPath)
+	return err == nil
+}
+
+// CertPathForDomain returns the path to a domain-specific cert file.
+// For domain "example.com", returns ~/.cloudflared/cert-example.com.pem
+func CertPathForDomain(domain string) string {
+	return filepath.Join(ConfigDir(), fmt.Sprintf("cert-%s.pem", domain))
+}
+
 // Login runs `cloudflared tunnel login` which opens a browser for OAuth.
 func Login() error {
 	cfPath, err := ResolveCloudflared()
@@ -219,6 +235,90 @@ func Login() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// LoginForDomain runs `cloudflared tunnel login` and saves the cert for a specific domain.
+// After login, the new cert.pem is moved to cert-{domain}.pem.
+func LoginForDomain(domain string) error {
+	cfPath, err := ResolveCloudflared()
+	if err != nil {
+		return err
+	}
+
+	defaultCertPath := filepath.Join(ConfigDir(), "cert.pem")
+
+	// Backup existing cert.pem if present
+	var backupPath string
+	if _, err := os.Stat(defaultCertPath); err == nil {
+		backupPath = defaultCertPath + ".backup"
+		if err := os.Rename(defaultCertPath, backupPath); err != nil {
+			return fmt.Errorf("failed to backup existing cert: %w", err)
+		}
+	}
+
+	// Run login - this creates a new cert.pem
+	cmd := exec.Command(cfPath, "tunnel", "login")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		// Restore backup on failure
+		if backupPath != "" {
+			_ = os.Rename(backupPath, defaultCertPath)
+		}
+		return err
+	}
+
+	// Move new cert.pem to domain-specific location
+	domainCertPath := CertPathForDomain(domain)
+	if err := os.Rename(defaultCertPath, domainCertPath); err != nil {
+		return fmt.Errorf("failed to save domain cert: %w", err)
+	}
+
+	// Restore the backup
+	if backupPath != "" {
+		_ = os.Rename(backupPath, defaultCertPath)
+	}
+
+	return nil
+}
+
+// certToken holds the decoded content of a cloudflared cert.pem
+type certToken struct {
+	ZoneID    string `json:"zoneID"`
+	AccountID string `json:"accountID"`
+	APIToken  string `json:"apiToken"`
+}
+
+// ParseCertZoneID extracts the zone ID from a cert.pem file.
+func ParseCertZoneID(certPath string) (string, error) {
+	data, err := os.ReadFile(certPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Extract the base64 content between BEGIN/END markers
+	content := string(data)
+	start := strings.Index(content, "-----BEGIN ARGO TUNNEL TOKEN-----")
+	end := strings.Index(content, "-----END ARGO TUNNEL TOKEN-----")
+	if start == -1 || end == -1 {
+		return "", fmt.Errorf("invalid cert.pem format")
+	}
+
+	b64 := strings.TrimSpace(content[start+len("-----BEGIN ARGO TUNNEL TOKEN-----") : end])
+	b64 = strings.ReplaceAll(b64, "\n", "")
+
+	decoded, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode cert: %w", err)
+	}
+
+	var token certToken
+	if err := json.Unmarshal(decoded, &token); err != nil {
+		return "", fmt.Errorf("failed to parse cert token: %w", err)
+	}
+
+	return token.ZoneID, nil
 }
 
 // TunnelExists checks whether a named tunnel already exists.
@@ -259,14 +359,45 @@ func CreateTunnel(name string) error {
 
 // RouteDNS creates a CNAME record for hostname → tunnel.
 func RouteDNS(tunnelName, hostname string) error {
+	return RouteDNSWithCert(tunnelName, hostname, "")
+}
+
+// RouteDNSWithCert creates a CNAME record using a specific origin cert.
+func RouteDNSWithCert(tunnelName, hostname, certPath string) error {
 	cfPath, err := ResolveCloudflared()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(cfPath, "tunnel", "route", "dns", "--overwrite-dns", tunnelName, hostname)
+
+	args := []string{"tunnel"}
+	if certPath != "" {
+		args = append(args, "--origincert", certPath)
+	}
+	args = append(args, "route", "dns", "--overwrite-dns", tunnelName, hostname)
+
+	cmd := exec.Command(cfPath, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// VerifyDNS checks if a hostname resolves (has DNS records).
+// Returns true if the hostname resolves within the timeout.
+func VerifyDNS(hostname string, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		_, err := net.LookupHost(hostname)
+		if err == nil {
+			return true
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return false
+}
+
+// GetTunnelUUID returns the UUID for a named tunnel.
+func GetTunnelUUID(tunnelName string) string {
+	return lookupTunnelID(tunnelName)
 }
 
 // ConfigDir returns the path where gtl stores tunnel config files.

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/confirm"
@@ -101,7 +102,10 @@ var tunnelSetupCmd = &cobra.Command{
 authenticates with Cloudflare, creates a tunnel, and routes your domain.
 
 After setup, 'gtl tunnel' will automatically use your domain.
-Subdomains are derived from project and branch names, matching gtl serve routes.`,
+Subdomains are derived from project and branch names, matching gtl serve routes.
+
+Multi-domain support: Each domain requires authentication with the Cloudflare
+account that owns that zone. gtl stores per-domain credentials automatically.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		uc := config.LoadUserConfig("")
 
@@ -126,6 +130,7 @@ Subdomains are derived from project and branch names, matching gtl serve routes.
 			}
 		}
 
+		// Initial login if no credentials exist at all
 		if !tunnel.IsLoggedIn() {
 			fmt.Println(style.Actionf("Opening Cloudflare login — select the account that owns your domain."))
 			if err := tunnel.Login(); err != nil {
@@ -172,12 +177,56 @@ Subdomains are derived from project and branch names, matching gtl serve routes.
 			}
 		}
 
+		// Check if we have credentials for this domain
+		certPath := tunnel.CertPathForDomain(domain)
+		if !tunnel.IsLoggedInForDomain(domain) {
+			// Try with default cert first
+			certPath = ""
+		}
+
 		wildcardHost := "*." + domain
 		fmt.Println(style.Actionf("Routing %s → tunnel %q", wildcardHost, tunnelName))
-		if err := tunnel.RouteDNS(tunnelName, wildcardHost); err != nil {
-			fmt.Fprintln(os.Stderr, style.Warnf("DNS routing failed: %v", err))
-			fmt.Fprintln(os.Stderr, style.Dimf("  Add a wildcard CNAME manually in Cloudflare DNS:"))
-			fmt.Fprintf(os.Stderr, "  CNAME: *.%s → %s.cfargotunnel.com\n", domain, tunnelName)
+		if err := tunnel.RouteDNSWithCert(tunnelName, wildcardHost, certPath); err != nil {
+			return printDNSManualInstructions(tunnelName, domain, err)
+		}
+
+		// Verify DNS was created in the correct zone
+		testHost := "gtl-verify." + domain
+		fmt.Println(style.Dimf("Verifying DNS propagation..."))
+		if !tunnel.VerifyDNS(testHost, 10*time.Second) {
+			// DNS routing "succeeded" but record wasn't created in the right zone
+			// This happens when cert.pem is scoped to a different zone
+			fmt.Println()
+			fmt.Println(style.Warnf("DNS record was not created in the %s zone.", domain))
+			fmt.Println(style.Dimf("Your cloudflared credentials are for a different Cloudflare zone."))
+			fmt.Println()
+
+			if confirm.Prompt(fmt.Sprintf("Authenticate with the Cloudflare account that owns %s?", domain), true, nil) {
+				fmt.Println()
+				fmt.Println(style.Actionf("Opening Cloudflare login — select the zone for %s", domain))
+				if err := tunnel.LoginForDomain(domain); err != nil {
+					return fmt.Errorf("login failed: %w", err)
+				}
+
+				// Retry DNS routing with domain-specific cert
+				certPath = tunnel.CertPathForDomain(domain)
+				fmt.Println(style.Actionf("Routing %s → tunnel %q", wildcardHost, tunnelName))
+				if err := tunnel.RouteDNSWithCert(tunnelName, wildcardHost, certPath); err != nil {
+					return printDNSManualInstructions(tunnelName, domain, err)
+				}
+
+				// Verify again
+				if !tunnel.VerifyDNS(testHost, 10*time.Second) {
+					return printDNSManualInstructions(tunnelName, domain, nil)
+				}
+			} else {
+				return printDNSManualInstructions(tunnelName, domain, nil)
+			}
+		}
+
+		// Save the domain-specific cert path in config if we have one
+		if certPath != "" {
+			uc.Set("tunnel.tunnels."+tunnelName+".cert", certPath)
 		}
 
 		uc.Set("tunnel.tunnels."+tunnelName+".domain", domain)
@@ -203,6 +252,35 @@ Subdomains are derived from project and branch names, matching gtl serve routes.
 		fmt.Printf("%s gtl tunnel → %s\n", style.Successf("Done!"), style.Link("https://{branch}."+domain))
 		return nil
 	},
+}
+
+func printDNSManualInstructions(tunnelName, domain string, err error) error {
+	tunnelUUID := tunnel.GetTunnelUUID(tunnelName)
+	if tunnelUUID == "" {
+		tunnelUUID = tunnelName
+	}
+
+	fmt.Println()
+	fmt.Println(style.Warnf("Could not create DNS record automatically."))
+	fmt.Println()
+	fmt.Println("Add this record manually in Cloudflare DNS for", style.Bold.Render(domain)+":")
+	fmt.Println()
+	fmt.Printf("  Type:   CNAME\n")
+	fmt.Printf("  Name:   *\n")
+	fmt.Printf("  Target: %s.cfargotunnel.com\n", tunnelUUID)
+	fmt.Printf("  Proxy:  Proxied (orange cloud)\n")
+	fmt.Println()
+
+	if err != nil {
+		return &CliError{
+			Message: "DNS routing failed",
+			Hint:    "Add the CNAME record manually in Cloudflare dashboard, then re-run setup.",
+		}
+	}
+	return &CliError{
+		Message: "DNS record not found in target zone",
+		Hint:    "Add the CNAME record manually in Cloudflare dashboard.",
+	}
 }
 
 var tunnelStatusCmd = &cobra.Command{

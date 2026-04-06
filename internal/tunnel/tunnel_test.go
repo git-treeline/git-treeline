@@ -144,3 +144,69 @@ func TestConfigDir(t *testing.T) {
 		t.Errorf("expected path ending in .cloudflared, got %s", got)
 	}
 }
+
+func TestParseCertZoneID(t *testing.T) {
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "cert.pem")
+
+	// Valid cert with zone ID
+	validCert := `-----BEGIN ARGO TUNNEL TOKEN-----
+eyJ6b25lSUQiOiJhYmMxMjMiLCJhY2NvdW50SUQiOiJkZWY0NTYiLCJhcGlUb2tlbiI6InRlc3QifQ==
+-----END ARGO TUNNEL TOKEN-----
+`
+	if err := os.WriteFile(certPath, []byte(validCert), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	zoneID, err := ParseCertZoneID(certPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if zoneID != "abc123" {
+		t.Errorf("ParseCertZoneID = %q, want %q", zoneID, "abc123")
+	}
+}
+
+func TestParseCertZoneID_InvalidFormat(t *testing.T) {
+	dir := t.TempDir()
+	certPath := filepath.Join(dir, "cert.pem")
+
+	if err := os.WriteFile(certPath, []byte("not a valid cert"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ParseCertZoneID(certPath)
+	if err == nil {
+		t.Error("expected error for invalid cert format")
+	}
+}
+
+func TestCertPathForDomain(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	path := CertPathForDomain("example.com")
+	if !strings.HasSuffix(path, "cert-example.com.pem") {
+		t.Errorf("CertPathForDomain = %q, expected suffix cert-example.com.pem", path)
+	}
+}
+
+func TestIsLoggedInForDomain(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+
+	// No cert exists
+	if IsLoggedInForDomain("example.com") {
+		t.Error("expected false when no domain cert exists")
+	}
+
+	// Create domain cert
+	cfDir := filepath.Join(dir, ".cloudflared")
+	_ = os.MkdirAll(cfDir, 0o700)
+	certPath := filepath.Join(cfDir, "cert-example.com.pem")
+	_ = os.WriteFile(certPath, []byte("cert"), 0o600)
+
+	if !IsLoggedInForDomain("example.com") {
+		t.Error("expected true when domain cert exists")
+	}
+}

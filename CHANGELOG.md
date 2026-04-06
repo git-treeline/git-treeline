@@ -1,3 +1,7 @@
+## [Unreleased]
+
+- **Multi-domain tunnel support** — `gtl tunnel setup` now supports multiple Cloudflare domains. When the requested domain differs from your current credentials, gtl prompts to authenticate with the correct zone and stores per-domain certificates (`cert-{domain}.pem`). DNS routing uses `--origincert` to target the correct zone. After routing, gtl verifies the DNS record was created in the intended zone; if not, it provides clear manual CNAME instructions with the tunnel UUID.
+
 ## [0.31.0]
 
 - **Port preservation** — default `port.base` changed from 3000 to 3002; default `port.increment` changed from 10 to 2. Common framework ports (3000, 4000, 5000, 8000, 8080, etc.) are now skipped by the allocator, keeping them free for the proxy to claim for origin-preserving routing. Third-party services (OAuth, Mapbox, Stripe) whitelisted for `localhost:3000` now work transparently across branches.
