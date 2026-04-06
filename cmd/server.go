@@ -56,6 +56,8 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 		sockPath := supervisor.SocketPath(absPath)
 		port := resolvePort(absPath)
 
+		startCommand = interpolateCommand(startCommand, port)
+
 		resp, err := supervisor.Send(sockPath, "status")
 		if err == nil {
 			if resp == "running" {
@@ -192,6 +194,26 @@ func resolvePort(absPath string) int {
 		return 0
 	}
 	return ports[0]
+}
+
+// interpolateCommand expands {port} (and {port_N}) tokens in the start
+// command string. This lets frameworks that ignore PORT env (Vite, Angular,
+// Expo) receive the allocated port via CLI flags.
+func interpolateCommand(cmd string, port int) string {
+	if !strings.Contains(cmd, "{port") {
+		return cmd
+	}
+	cmd = strings.ReplaceAll(cmd, "{port}", fmt.Sprintf("%d", port))
+
+	inc := 1
+	for i := 2; i <= 10; i++ {
+		token := fmt.Sprintf("{port_%d}", i)
+		if strings.Contains(cmd, token) {
+			cmd = strings.ReplaceAll(cmd, token, fmt.Sprintf("%d", port+inc))
+		}
+		inc++
+	}
+	return cmd
 }
 
 func awaitReady(sockPath string) error {

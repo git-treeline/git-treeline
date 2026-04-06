@@ -170,10 +170,22 @@ func doctorConfig(pc *config.ProjectConfig, det *detect.Result, absPath string) 
 		doctorLine("env_file", fmt.Sprintf("configured (%s) but file missing on disk", target))
 	}
 
-	if sc := pc.StartCommand(); sc != "" {
+	sc := pc.StartCommand()
+	if sc != "" {
 		doctorLine("commands.start", fmt.Sprintf("ok (%s)", sc))
 	} else {
 		doctorLine("commands.start", "not configured")
+	}
+
+	if sc != "" && !strings.Contains(sc, "{port}") {
+		switch det.Framework {
+		case "vite":
+			doctorLine("port wiring", "⚠ Vite ignores PORT env — add {port} to commands.start")
+		case "django", "python":
+			if !strings.Contains(sc, "$PORT") && !strings.Contains(sc, "${PORT") {
+				doctorLine("port wiring", "⚠ Django needs the port in the command — use {port}")
+			}
+		}
 	}
 }
 
