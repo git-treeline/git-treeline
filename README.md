@@ -769,6 +769,10 @@ gtl db name --json         # {"database": "myapp_feature_xyz"}
 | `gtl mcp` | | MCP server for AI agents (started automatically by your editor) |
 | `gtl version` | | Print version |
 
+## Acknowledgments
+
+Special thanks to [Josh Ferrara](https://github.com/joshferrara) for early feedback that shaped the direction of the project.
+
 ## License
 
 MIT License — see [LICENSE.txt](LICENSE.txt).
