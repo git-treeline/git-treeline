@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.33.0]
 
 - **`gtl worktrees`** — interactive TUI picker for worktrees, grouped by project. Arrow keys to navigate, Enter to print path. Alias: `gtl wt`.
 - **`gtl where <branch>`** — print the path to a worktree by branch name. Searches across all projects in the registry. Use `project/branch` to disambiguate when multiple projects have the same branch.
