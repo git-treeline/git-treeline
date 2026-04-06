@@ -56,9 +56,30 @@ func TestExtractSubdomain(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.host, func(t *testing.T) {
-			got := extractSubdomain(tt.host)
+			got := extractSubdomainFor(tt.host, "localhost")
 			if got != tt.want {
-				t.Errorf("extractSubdomain(%q) = %q, want %q", tt.host, got, tt.want)
+				t.Errorf("extractSubdomainFor(%q, \"localhost\") = %q, want %q", tt.host, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractSubdomain_CustomDomain(t *testing.T) {
+	tests := []struct {
+		host string
+		base string
+		want string
+	}{
+		{"salt-main.test", "test", "salt-main"},
+		{"test", "test", ""},
+		{"myapp.dev.local", "dev.local", "myapp"},
+		{"random.example.com", "test", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			got := extractSubdomainFor(tt.host, tt.base)
+			if got != tt.want {
+				t.Errorf("extractSubdomainFor(%q, %q) = %q, want %q", tt.host, tt.base, got, tt.want)
 			}
 		})
 	}
@@ -157,6 +178,170 @@ func TestRouterNotFound(t *testing.T) {
 
 	if resp.StatusCode != 404 {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestRouterLoopDetection(t *testing.T) {
+	reg := testRegistry(t, []registry.Allocation{
+		{"project": "salt", "branch": "main", "port": float64(3001), "ports": []any{float64(3001)}, "worktree": "/tmp/salt"},
+	})
+	router := NewRouter(3000, reg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/", nil)
+	req.Host = "salt-main.localhost:3000"
+	req.Header.Set("X-Gtl-Proxy", "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusLoopDetected {
+		t.Errorf("expected 508 Loop Detected, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "Loop Detected") {
+		t.Error("expected loop detection message in body")
+	}
+}
+
+func TestRouterSetsProxyHeader(t *testing.T) {
+	targetPort := freePort(t)
+	var gotHeader string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		gotHeader = r.Header.Get("X-Gtl-Proxy")
+		_, _ = fmt.Fprint(w, "ok")
+	})
+	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
+	go func() { _ = target.ListenAndServe() }()
+	defer func() { _ = target.Close() }()
+	waitForPort(t, targetPort)
+
+	reg := testRegistry(t, []registry.Allocation{
+		{"project": "salt", "branch": "main", "port": float64(targetPort), "ports": []any{float64(targetPort)}, "worktree": "/tmp/salt"},
+	})
+	router := NewRouter(0, reg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/", nil)
+	req.Host = "salt-main.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if gotHeader != "1" {
+		t.Errorf("expected X-Gtl-Proxy header to be set on proxied request, got %q", gotHeader)
+	}
+}
+
+func TestRouterAliasRouting(t *testing.T) {
+	targetPort := freePort(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "alias target")
+	})
+	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
+	go func() { _ = target.ListenAndServe() }()
+	defer func() { _ = target.Close() }()
+	waitForPort(t, targetPort)
+
+	reg := testRegistry(t, []registry.Allocation{})
+	router := NewRouter(0, reg).WithAliases(func() map[string]int {
+		return map[string]int{"redis-ui": targetPort}
+	})
+
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/", nil)
+	req.Host = "redis-ui.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "alias target" {
+		t.Errorf("expected 'alias target', got %q", string(body))
+	}
+}
+
+func TestRouterRegistryOverridesAlias(t *testing.T) {
+	reg := testRegistry(t, []registry.Allocation{
+		{"project": "myapp", "branch": "main", "port": float64(4000), "ports": []any{float64(4000)}, "worktree": "/tmp/myapp"},
+	})
+	router := NewRouter(0, reg).WithAliases(func() map[string]int {
+		return map[string]int{"myapp-main": 9999}
+	})
+
+	routes := router.Routes()
+	if routes["myapp-main"] != 4000 {
+		t.Errorf("registry should override alias: expected 4000, got %d", routes["myapp-main"])
+	}
+}
+
+func TestRouterWildcardFallback(t *testing.T) {
+	targetPort := freePort(t)
+	var receivedHost string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		receivedHost = r.Host
+		_, _ = fmt.Fprint(w, "wildcard ok")
+	})
+	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
+	go func() { _ = target.ListenAndServe() }()
+	defer func() { _ = target.Close() }()
+	waitForPort(t, targetPort)
+
+	reg := testRegistry(t, []registry.Allocation{
+		{"project": "myapp", "branch": "feature", "port": float64(targetPort), "ports": []any{float64(targetPort)}, "worktree": "/tmp/myapp"},
+	})
+	router := NewRouter(0, reg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/", nil)
+	req.Host = "tenant1.myapp-feature.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "wildcard ok" {
+		t.Errorf("expected wildcard routing to work, got %q (status %d)", string(body), resp.StatusCode)
+	}
+	if !strings.Contains(receivedHost, "tenant1") {
+		t.Errorf("expected original Host header with tenant prefix, got %q", receivedHost)
+	}
+}
+
+func TestRouterWildcardNoMatch(t *testing.T) {
+	reg := testRegistry(t, []registry.Allocation{
+		{"project": "myapp", "branch": "main", "port": float64(3001), "ports": []any{float64(3001)}, "worktree": "/tmp/myapp"},
+	})
+	router := NewRouter(3000, reg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/", nil)
+	req.Host = "tenant1.nonexistent.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != 404 {
+		t.Errorf("expected 404 for non-matching wildcard, got %d", resp.StatusCode)
 	}
 }
 

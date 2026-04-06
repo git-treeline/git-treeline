@@ -22,15 +22,21 @@ import (
 	"github.com/git-treeline/git-treeline/internal/registry"
 )
 
+// AliasSource returns static alias routes to merge into the route table.
+// Registry routes take priority over aliases.
+type AliasSource func() map[string]int
+
 // Router is a subdomain-based reverse proxy that routes
 // {project}-{branch}.localhost requests to the correct worktree port
 // by reading allocations from the git-treeline registry.
 type Router struct {
-	listenPort int
-	registry   *registry.Registry
-	routes     map[string]int
-	mu         sync.RWMutex
-	useTLS     bool
+	listenPort   int
+	registry     *registry.Registry
+	routes       map[string]int
+	mu           sync.RWMutex
+	useTLS       bool
+	baseDomain   string
+	aliasSources []AliasSource
 }
 
 func NewRouter(listenPort int, reg *registry.Registry) *Router {
@@ -38,7 +44,23 @@ func NewRouter(listenPort int, reg *registry.Registry) *Router {
 		listenPort: listenPort,
 		registry:   reg,
 		routes:     make(map[string]int),
+		baseDomain: "localhost",
 	}
+	r.refreshRoutes()
+	return r
+}
+
+// WithBaseDomain sets the local TLD used for subdomain extraction.
+func (r *Router) WithBaseDomain(domain string) *Router {
+	if domain != "" {
+		r.baseDomain = domain
+	}
+	return r
+}
+
+// WithAliases adds an alias source that is merged on each route refresh.
+func (r *Router) WithAliases(src AliasSource) *Router {
+	r.aliasSources = append(r.aliasSources, src)
 	r.refreshRoutes()
 	return r
 }
@@ -88,7 +110,7 @@ func (r *Router) Run() error {
 		}
 	}()
 
-	fmt.Printf("Router listening on %s://localhost:%d\n", scheme, r.listenPort)
+	fmt.Printf("Router listening on %s://%s:%d\n", scheme, r.baseDomain, r.listenPort)
 	r.printRoutes()
 	fmt.Println("Press Ctrl+C to stop")
 
@@ -118,12 +140,19 @@ func (r *Router) Run() error {
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if req.Header.Get("X-Gtl-Proxy") != "" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusLoopDetected)
+		_, _ = fmt.Fprint(w, "508 Loop Detected\n\nThe dev server proxied this request back through the gtl router.\nCheck your app's proxy/redirect config to avoid the loop.\n")
+		return
+	}
+
 	host := req.Host
 	if idx := strings.LastIndex(host, ":"); idx != -1 {
 		host = host[:idx]
 	}
 
-	subdomain := extractSubdomain(host)
+	subdomain := r.extractSubdomain(host)
 	if subdomain == "" {
 		r.serveStatusPage(w, req)
 		return
@@ -131,6 +160,12 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	r.mu.RLock()
 	targetPort, ok := r.routes[subdomain]
+	if !ok {
+		if idx := strings.Index(subdomain, "."); idx != -1 {
+			parent := subdomain[idx+1:]
+			targetPort, ok = r.routes[parent]
+		}
+	}
 	r.mu.RUnlock()
 
 	if !ok {
@@ -138,6 +173,10 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	r.proxyTo(w, req, targetPort)
+}
+
+func (r *Router) proxyTo(w http.ResponseWriter, req *http.Request, targetPort int) {
 	backendHost := resolveLocalhost(targetPort)
 	target := &url.URL{
 		Scheme: "http",
@@ -147,6 +186,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
 			pr.Out.Host = pr.In.Host
+			pr.Out.Header.Set("X-Gtl-Proxy", "1")
 		},
 	}
 	proxy.ServeHTTP(w, req)
@@ -155,6 +195,13 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (r *Router) refreshRoutes() {
 	allocs := r.registry.Allocations()
 	routes := make(map[string]int, len(allocs))
+
+	// Aliases go first so registry routes can override them
+	for _, src := range r.aliasSources {
+		for name, port := range src() {
+			routes[name] = port
+		}
+	}
 
 	for _, a := range allocs {
 		project := getString(a, "project")
@@ -202,7 +249,7 @@ func (r *Router) printRoutes() {
 	keys := sortedKeys(routes)
 	fmt.Printf("Active routes (%d):\n", len(keys))
 	for _, k := range keys {
-		fmt.Printf("  %s://%s.localhost → :%d\n", r.scheme(), k, routes[k])
+		fmt.Printf("  %s://%s.%s → :%d\n", r.scheme(), k, r.baseDomain, routes[k])
 	}
 }
 
@@ -220,7 +267,7 @@ func (r *Router) serveStatusPage(w http.ResponseWriter, _ *http.Request) {
 	} else {
 		_, _ = fmt.Fprint(w, "<table><tr><th>Route</th><th>Port</th></tr>")
 		for _, k := range sortedKeys(routes) {
-			href := fmt.Sprintf("%s://%s.localhost", r.scheme(), k)
+			href := fmt.Sprintf("%s://%s.%s", r.scheme(), k, r.baseDomain)
 			_, _ = fmt.Fprintf(w, "<tr><td><a href=%q>%s</a></td><td>%d</td></tr>", href, k, routes[k])
 		}
 		_, _ = fmt.Fprint(w, "</table>")
@@ -234,19 +281,25 @@ func (r *Router) serveNotFound(w http.ResponseWriter, subdomain string) {
 	w.WriteHeader(http.StatusNotFound)
 	_, _ = fmt.Fprintf(w, "No route for %q\n\nAvailable routes:\n", subdomain)
 	for _, k := range sortedKeys(routes) {
-		_, _ = fmt.Fprintf(w, "  %s://%s.localhost\n", r.scheme(), k)
+		_, _ = fmt.Fprintf(w, "  %s://%s.%s\n", r.scheme(), k, r.baseDomain)
 	}
 }
 
-// extractSubdomain returns the subdomain portion of a host like
-// "salt-main.localhost" → "salt-main". Returns "" for plain "localhost".
-func extractSubdomain(host string) string {
+func (r *Router) extractSubdomain(host string) string {
+	return extractSubdomainFor(host, r.baseDomain)
+}
+
+// extractSubdomainFor returns the subdomain portion of a host like
+// "salt-main.localhost" → "salt-main". Returns "" for plain base domain.
+func extractSubdomainFor(host, baseDomain string) string {
 	host = strings.ToLower(host)
-	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+	base := strings.ToLower(baseDomain)
+	if host == base || host == "127.0.0.1" || host == "::1" {
 		return ""
 	}
-	if strings.HasSuffix(host, ".localhost") {
-		return strings.TrimSuffix(host, ".localhost")
+	suffix := "." + base
+	if strings.HasSuffix(host, suffix) {
+		return strings.TrimSuffix(host, suffix)
 	}
 	return ""
 }
