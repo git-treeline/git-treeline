@@ -14,11 +14,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func routeHostnames(baseDomain string) []string {
+	reg := registry.New("")
+	allocs := reg.Allocations()
+	var hostnames []string
+	for _, a := range allocs {
+		project, _ := a["project"].(string)
+		branch, _ := a["branch"].(string)
+		if project == "" {
+			continue
+		}
+		key := proxy.RouteKey(project, branch)
+		hostnames = append(hostnames, key+"."+baseDomain)
+	}
+	return hostnames
+}
+
 func init() {
 	serveCmd.AddCommand(serveInstallCmd)
 	serveCmd.AddCommand(serveUninstallCmd)
 	serveCmd.AddCommand(serveStatusCmd)
 	serveCmd.AddCommand(serveRunCmd)
+	serveHostsCmd.AddCommand(serveHostsSyncCmd)
+	serveHostsCmd.AddCommand(serveHostsCleanCmd)
+	serveCmd.AddCommand(serveHostsCmd)
+	serveAliasCmd.Flags().BoolVar(&serveAliasRemove, "remove", false, "Remove the named alias")
+	serveCmd.AddCommand(serveAliasCmd)
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -89,10 +110,27 @@ After install, access worktrees at https://{project}-{branch}.localhost`,
 			return err
 		}
 
+		domain := uc.RouterDomain()
+		hostsRequired := domain != "localhost"
+		if runtime.GOOS == "darwin" || hostsRequired {
+			hostnames := routeHostnames(domain)
+			if len(hostnames) > 0 {
+				if err := service.SyncHosts(hostnames); err != nil {
+					fmt.Fprintln(os.Stderr, style.Warnf("hosts sync failed: %v", err))
+					if hostsRequired {
+						fmt.Fprintln(os.Stderr, style.Dimf("  Custom TLD .%s requires /etc/hosts entries.", domain))
+					} else {
+						fmt.Fprintln(os.Stderr, style.Dimf("  Safari may not resolve *.localhost subdomains."))
+					}
+					fmt.Fprintln(os.Stderr, style.Dimf("  Run 'gtl serve hosts sync' manually."))
+				}
+			}
+		}
+
 		fmt.Println()
 		fmt.Println(style.Actionf("Router running."))
 		fmt.Printf("  Status: %s\n", style.Cmd("gtl serve status"))
-		fmt.Printf("  URL:    %s\n", style.Link("https://{project}-{branch}.localhost"))
+		fmt.Printf("  URL:    %s\n", style.Link(fmt.Sprintf("https://{project}-{branch}.%s", domain)))
 		return nil
 	},
 }
@@ -118,6 +156,12 @@ var serveUninstallCmd = &cobra.Command{
 			fmt.Fprintln(os.Stderr, style.Warnf("could not remove CA trust: %v", err))
 		} else {
 			fmt.Println("CA trust removed.")
+		}
+
+		if err := service.CleanHosts(); err != nil {
+			fmt.Fprintln(os.Stderr, style.Warnf("could not clean hosts file: %v", err))
+		} else if runtime.GOOS == "darwin" {
+			fmt.Println("Hosts entries removed.")
 		}
 		return nil
 	},
@@ -150,8 +194,12 @@ var serveStatusCmd = &cobra.Command{
 			fmt.Println("Port forwarding: not configured")
 		}
 
+		domain := uc.RouterDomain()
 		reg := registry.New("")
-		router := proxy.NewRouter(port, reg)
+		router := proxy.NewRouter(port, reg).
+			WithBaseDomain(domain).
+			WithAliases(func() map[string]int { return uc.RouterAliases() }).
+			WithAliases(projectAliases(reg))
 		if caInstalled {
 			router.WithTLS()
 		}
@@ -170,11 +218,21 @@ var serveStatusCmd = &cobra.Command{
 		fmt.Printf("\nRoutes (%d):\n", len(routes))
 		for _, key := range sortedRouteKeys(routes) {
 			if portFwd {
-				fmt.Printf("  %s://%s.localhost → :%d\n", scheme, key, routes[key])
+				fmt.Printf("  %s://%s.%s → :%d\n", scheme, key, domain, routes[key])
 			} else {
-				fmt.Printf("  %s://%s.localhost:%d → :%d\n", scheme, key, port, routes[key])
+				fmt.Printf("  %s://%s.%s:%d → :%d\n", scheme, key, domain, port, routes[key])
 			}
 		}
+
+		if runtime.GOOS == "darwin" {
+			hostnames := routeHostnames(domain)
+			if service.NeedsHostsSync(hostnames) {
+				fmt.Println()
+				fmt.Fprintln(os.Stderr, style.Warnf("Safari may not resolve some routes (hosts file out of date)."))
+				fmt.Fprintln(os.Stderr, style.Dimf("  Run: gtl serve hosts sync"))
+			}
+		}
+
 		return nil
 	},
 }
@@ -191,12 +249,144 @@ var serveRunCmd = &cobra.Command{
 func runRouter() error {
 	uc := config.LoadUserConfig("")
 	port := uc.RouterPort()
+	domain := uc.RouterDomain()
 	reg := registry.New("")
-	router := proxy.NewRouter(port, reg)
+	router := proxy.NewRouter(port, reg).
+		WithBaseDomain(domain).
+		WithAliases(func() map[string]int { return uc.RouterAliases() }).
+		WithAliases(projectAliases(reg))
 	if proxy.IsCAInstalled() {
 		router.WithTLS()
 	}
 	return router.Run()
+}
+
+// projectAliases returns an AliasSource that merges aliases from all
+// registered worktrees' project configs.
+func projectAliases(reg *registry.Registry) proxy.AliasSource {
+	return func() map[string]int {
+		allocs := reg.Allocations()
+		seen := make(map[string]bool)
+		merged := make(map[string]int)
+		for _, a := range allocs {
+			wt, _ := a["worktree"].(string)
+			if wt == "" || seen[wt] {
+				continue
+			}
+			seen[wt] = true
+			pc := config.LoadProjectConfig(wt)
+			for name, port := range pc.Aliases() {
+				merged[name] = port
+			}
+		}
+		return merged
+	}
+}
+
+var serveAliasRemove bool
+
+var serveAliasCmd = &cobra.Command{
+	Use:   "alias [name] [port]",
+	Short: "Manage static alias routes",
+	Long: `Add, remove, or list static subdomain aliases.
+
+Aliases let you route non-gtl services through the router:
+  gtl serve alias redis-ui 8081    → redis-ui.localhost:8081
+  gtl serve alias --remove redis-ui
+  gtl serve alias                  → list all aliases`,
+	Args: cobra.MaximumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		uc := config.LoadUserConfig("")
+
+		if len(args) == 0 {
+			aliases := uc.RouterAliases()
+			if len(aliases) == 0 {
+				fmt.Println("No aliases configured.")
+				return nil
+			}
+			fmt.Println("User aliases:")
+			for name, port := range aliases {
+				fmt.Printf("  %s → :%d\n", name, port)
+			}
+			return nil
+		}
+
+		name := args[0]
+		if serveAliasRemove {
+			uc.Set("router.aliases."+name, nil)
+			if err := uc.Save(); err != nil {
+				return fmt.Errorf("failed to save config: %w", err)
+			}
+			fmt.Printf("Removed alias %q.\n", name)
+			return nil
+		}
+
+		if len(args) < 2 {
+			return fmt.Errorf("usage: gtl serve alias <name> <port>")
+		}
+
+		var port int
+		if _, err := fmt.Sscanf(args[1], "%d", &port); err != nil || port < 1 || port > 65535 {
+			return fmt.Errorf("invalid port: %s", args[1])
+		}
+
+		uc.Set("router.aliases."+name, float64(port))
+		if err := uc.Save(); err != nil {
+			return fmt.Errorf("failed to save config: %w", err)
+		}
+		fmt.Printf("Alias %s.%s → :%d\n", name, uc.RouterDomain(), port)
+		fmt.Println("The router will pick this up on next refresh (~5s).")
+		return nil
+	},
+}
+
+var serveHostsCmd = &cobra.Command{
+	Use:   "hosts",
+	Short: "Manage /etc/hosts entries for Safari support (macOS)",
+	Long: `Safari on macOS does not resolve *.localhost subdomains without /etc/hosts
+entries. These commands add and remove managed entries so Safari works
+with the gtl router.
+
+Other browsers (Chrome, Firefox, Arc) resolve *.localhost natively.`,
+}
+
+var serveHostsSyncCmd = &cobra.Command{
+	Use:   "sync",
+	Short: "Add /etc/hosts entries for all active routes",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		uc := config.LoadUserConfig("")
+		domain := uc.RouterDomain()
+		if runtime.GOOS != "darwin" && domain == "localhost" {
+			fmt.Println("Hosts sync is macOS-only (*.localhost resolves natively on Linux).")
+			return nil
+		}
+		hostnames := routeHostnames(domain)
+		if len(hostnames) == 0 {
+			fmt.Println("No active routes to sync.")
+			return nil
+		}
+		if err := service.SyncHosts(hostnames); err != nil {
+			return fmt.Errorf("hosts sync failed: %w", err)
+		}
+		fmt.Printf("Synced %d host(s) to /etc/hosts.\n", len(hostnames))
+		return nil
+	},
+}
+
+var serveHostsCleanCmd = &cobra.Command{
+	Use:   "clean",
+	Short: "Remove all git-treeline entries from /etc/hosts",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if runtime.GOOS != "darwin" {
+			fmt.Println("Nothing to clean (hosts sync is macOS-only).")
+			return nil
+		}
+		if err := service.CleanHosts(); err != nil {
+			return fmt.Errorf("hosts clean failed: %w", err)
+		}
+		fmt.Println("Removed git-treeline entries from /etc/hosts.")
+		return nil
+	},
 }
 
 func sortedRouteKeys(m map[string]int) []string {

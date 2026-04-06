@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"runtime"
 
 	"github.com/git-treeline/git-treeline/internal/config"
 	"github.com/git-treeline/git-treeline/internal/proxy"
@@ -19,17 +21,25 @@ var errServeNotInstalled = fmt.Errorf(
 // Called from setup, new, and clone to avoid duplication.
 func printRouterAndTunnel(uc *config.UserConfig, project, branch string) {
 	routeKey := proxy.RouteKey(project, branch)
+	domain := uc.RouterDomain()
 
 	if service.IsRunning() {
 		if service.IsPortForwardConfigured() {
-			fmt.Println(style.Actionf("Router: %s", style.Link("https://"+routeKey+".localhost")))
+			fmt.Println(style.Actionf("Router: %s", style.Link("https://"+routeKey+"."+domain)))
 		} else {
 			port := uc.RouterPort()
-			fmt.Println(style.Actionf("Router: %s", style.Link(fmt.Sprintf("https://%s.localhost:%d", routeKey, port))))
+			fmt.Println(style.Actionf("Router: %s", style.Link(fmt.Sprintf("https://%s.%s:%d", routeKey, domain, port))))
 		}
 	}
 
-	if domain := uc.TunnelDomain(""); domain != "" {
-		fmt.Println(style.Actionf("Tunnel: run %s → %s", style.Cmd("gtl tunnel"), style.Link("https://"+routeKey+"."+domain)))
+	if tunnelDomain := uc.TunnelDomain(""); tunnelDomain != "" {
+		fmt.Println(style.Actionf("Tunnel: run %s → %s", style.Cmd("gtl tunnel"), style.Link("https://"+routeKey+"."+tunnelDomain)))
+	}
+
+	if runtime.GOOS == "darwin" {
+		hostname := routeKey + "." + domain
+		if service.NeedsHostsSync([]string{hostname}) {
+			fmt.Fprintln(os.Stderr, style.Dimf("  Safari: run %s to resolve this route", style.Cmd("gtl serve hosts sync")))
+		}
 	}
 }

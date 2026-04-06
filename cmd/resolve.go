@@ -71,10 +71,11 @@ Examples:
 				if targetBranch != "" && targetProject != "" {
 					routeKey := proxy.RouteKey(targetProject, targetBranch)
 					uc := config.LoadUserConfig("")
+					domain := uc.RouterDomain()
 					if service.IsPortForwardConfigured() {
-						url = fmt.Sprintf("https://%s.localhost", routeKey)
+						url = fmt.Sprintf("https://%s.%s", routeKey, domain)
 					} else {
-						url = fmt.Sprintf("https://%s.localhost:%d", routeKey, uc.RouterPort())
+						url = fmt.Sprintf("https://%s.%s:%d", routeKey, domain, uc.RouterPort())
 					}
 				}
 			}

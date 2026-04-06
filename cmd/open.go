@@ -54,12 +54,13 @@ var openCmd = &cobra.Command{
 		url := fmt.Sprintf("http://localhost:%d", ports[0])
 
 		if branch != "" && service.IsRunning() {
+			domain := uc.RouterDomain()
 			routeKey := proxy.RouteKey(project, branch)
 			if service.IsPortForwardConfigured() {
-				url = fmt.Sprintf("https://%s.localhost", routeKey)
+				url = fmt.Sprintf("https://%s.%s", routeKey, domain)
 			} else {
 				routerPort := uc.RouterPort()
-				url = fmt.Sprintf("https://%s.localhost:%d", routeKey, routerPort)
+				url = fmt.Sprintf("https://%s.%s:%d", routeKey, domain, routerPort)
 			}
 		}
 
