@@ -10,6 +10,14 @@
 - **Browser blocked port avoidance** — the port allocator now skips ports on the WHATWG "bad port" list (e.g. 6000, 6665–6669) that browsers silently refuse to connect to.
 - **Stale supervisor detection** — `gtl start` detects when a supervisor socket already exists and reports the conflict instead of silently failing.
 - **Security hardening** — privileged operations (`pfctl`, `iptables`, `cp`) now use full binary paths to prevent PATH injection in sudo contexts. `SECURITY.md` rewritten to document the trust model and privileged operations.
+- **Structured CLI errors** — all user-facing errors now use a `CliError` type with message, remediation hint, and optional docs link. Centralized formatting in the root command ensures consistent output across every command.
+- **Config validation** — `WarnUnknownKeys` detects unrecognized keys in both user config and `.treeline.yml`, with Levenshtein-distance "did you mean?" suggestions for likely typos.
+- **Guard tests** — static analysis tests using `go/parser` enforce architectural rules: no `os.Exit` in `internal/` or `cmd/RunE`, no `fmt.Print` in `internal/`. Catches violations at test time.
+- **Git exec abstraction** — `gitRun`, `gitOutput`, `gitCheck` helpers in `internal/worktree` replace scattered `exec.Command("git", ...)` calls with consistent error handling.
+- **Framework-aware port interpolation** — `{port}`, `{port_2}`, `{port_3}` tokens in start commands resolve to the allocated port block, supporting multi-port frameworks out of the box.
+- **Alias routing** — the HTTPS router accepts alias sources for non-registry routes (e.g. Redis UI, Mailhog). Registry routes override aliases on collision.
+- **`/etc/hosts` sync** — `gtl serve hosts sync` writes entries for all active routes to `/etc/hosts`, enabling Safari compatibility (Safari doesn't resolve `*.localhost` to loopback).
+- **Configurable router domain** — `router.domain` in user config changes the base domain from `localhost` to a custom value (e.g. `dev.local`).
 - **macOS CI** — platform-specific packages (proxy, service, supervisor) now run on macOS in CI.
 
 ## [0.29.0]
