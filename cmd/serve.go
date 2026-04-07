@@ -191,6 +191,7 @@ var serveStatusCmd = &cobra.Command{
 
 		if service.IsRunning() {
 			fmt.Printf("Router: running on port %d (HTTPS)\n", port)
+			warnRouterVersionMismatch()
 		} else {
 			fmt.Printf("Router: not running (port %d configured)\n", port)
 		}
@@ -211,7 +212,7 @@ var serveStatusCmd = &cobra.Command{
 		reg := registry.New("")
 		router := proxy.NewRouter(port, reg).
 			WithBaseDomain(domain).
-			WithAliases(func() map[string]int { return uc.RouterAliases() }).
+			WithAliases(func() map[string]int { return config.LoadUserConfig("").RouterAliases() }).
 			WithAliases(projectAliases(reg))
 		router.Refresh()
 		if caInstalled {
@@ -262,14 +263,15 @@ var serveRunCmd = &cobra.Command{
 }
 
 func runRouter() error {
+	service.WriteRouterVersion(Version)
 	uc := config.LoadUserConfig("")
 	port := uc.RouterPort()
 	domain := uc.RouterDomain()
 	reg := registry.New("")
 	router := proxy.NewRouter(port, reg).
 		WithBaseDomain(domain).
-		WithAliases(func() map[string]int { return uc.RouterAliases() }).
-		WithAliases(projectAliases(reg))
+		WithAliases(func() map[string]int { return config.LoadUserConfig("").RouterAliases() }).
+			WithAliases(projectAliases(reg))
 	if proxy.IsCAInstalled() {
 		router.WithTLS()
 	}
@@ -296,6 +298,17 @@ func projectAliases(reg *registry.Registry) proxy.AliasSource {
 		}
 		return merged
 	}
+}
+
+// warnRouterVersionMismatch prints a warning if the running router was started
+// by a different version of the CLI.
+func warnRouterVersionMismatch() {
+	running := service.RunningRouterVersion()
+	if running == "" || running == Version {
+		return
+	}
+	fmt.Fprintln(os.Stderr, style.Warnf("Router is running %s but CLI is %s.", running, Version))
+	fmt.Fprintln(os.Stderr, style.Dimf("  Run 'gtl serve install' to update the router."))
 }
 
 var serveAliasRemove bool

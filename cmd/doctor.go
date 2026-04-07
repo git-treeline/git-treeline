@@ -105,7 +105,7 @@ func doctorJSONOutput(pc *config.ProjectConfig, det *detect.Result, absPath stri
 
 	uc := config.LoadUserConfig("")
 	servePort := uc.RouterPort()
-	checks := service.CheckHealth(servePort)
+	checks := service.CheckHealth(servePort, Version)
 	serveInfo := map[string]any{}
 	for _, c := range checks {
 		entry := map[string]any{"status": c.Status, "detail": c.Detail}
@@ -289,7 +289,7 @@ func doctorServe() {
 		"port_forwarding": "Port forwarding",
 	}
 
-	checks := service.CheckHealth(port)
+	checks := service.CheckHealth(port, Version)
 	for _, c := range checks {
 		label := displayNames[c.Name]
 		if label == "" {
@@ -317,7 +317,7 @@ func doctorServe() {
 			doctorLine("CA cert", "⚠ could not read: "+err.Error())
 		} else if time.Now().After(expiry) {
 			doctorLine("CA cert", "✗ expired on "+expiry.Format("2006-01-02"))
-			fmt.Println("  fix: gtl serve uninstall && gtl serve install")
+			fmt.Println("  fix: gtl serve install")
 		} else {
 			doctorLine("CA cert", "ok (expires "+expiry.Format("2006-01-02")+")")
 		}

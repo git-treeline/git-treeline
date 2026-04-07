@@ -1,3 +1,9 @@
+## [0.35.5]
+
+- **Router version mismatch warning** — after upgrading the CLI, `gtl serve status` and `gtl start` now warn if the running router is an older version and prompt to run `gtl serve install`. The router records its version on startup; the CLI compares on each invocation.
+- **`gtl serve install` is now an upgrade command** — running `install` when a router is already running restarts it with the new binary. No need to `uninstall` first. All fix hints throughout the CLI now recommend `gtl serve install` instead of `uninstall && install`.
+- **Hot-reload user aliases** — `gtl serve alias` changes are now picked up by the running router within 5 seconds. Previously the router used a stale in-memory config and required a full reinstall to see new aliases.
+
 ## [0.35.4]
 
 - **Set `X-Forwarded-Proto` and `X-Forwarded-For` on proxied requests** — the `gtl serve` router and `gtl proxy` now set standard forwarding headers when proxying to backends. Fixes CSRF origin mismatches in Rails and other frameworks that compare the `Origin` header against `request.base_url` — previously the backend saw `http://` while the browser sent `https://`.

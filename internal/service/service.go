@@ -62,6 +62,29 @@ func IsRunning() bool {
 	}
 }
 
+// RouterVersionFile returns the path to the file where the running router
+// records its version on startup.
+func RouterVersionFile() string {
+	return filepath.Join(platform.ConfigDir(), "router.version")
+}
+
+// WriteRouterVersion writes the current version to the version file.
+// Called by the router on startup.
+func WriteRouterVersion(version string) {
+	_ = os.MkdirAll(platform.ConfigDir(), platform.DirMode)
+	_ = os.WriteFile(RouterVersionFile(), []byte(version), platform.PrivateFileMode)
+}
+
+// RunningRouterVersion reads the version recorded by the running router.
+// Returns "" if the file doesn't exist or can't be read.
+func RunningRouterVersion() string {
+	data, err := os.ReadFile(RouterVersionFile())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
 // --- macOS LaunchAgent ---
 
 var plistTemplate = template.Must(template.New("plist").Parse(`<?xml version="1.0" encoding="UTF-8"?>

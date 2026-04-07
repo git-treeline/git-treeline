@@ -19,11 +19,12 @@ type HealthCheck struct {
 }
 
 // CheckHealth runs all serve-related health checks and returns the results.
-func CheckHealth(routerPort int) []HealthCheck {
+func CheckHealth(routerPort int, cliVersion string) []HealthCheck {
 	var checks []HealthCheck
 
 	checks = append(checks, checkServiceRegistered())
 	checks = append(checks, checkBinaryMatch())
+	checks = append(checks, checkRouterVersion(cliVersion))
 	checks = append(checks, checkRouterListening(routerPort))
 	checks = append(checks, checkPortForward(routerPort))
 
@@ -78,7 +79,32 @@ func checkBinaryMatch() HealthCheck {
 		Name:   "binary",
 		Status: "warn",
 		Detail: fmt.Sprintf("mismatch: service=%s, current=%s", installed, current),
-		Fix:    "gtl serve uninstall && gtl serve install",
+		Fix:    "gtl serve install",
+	}
+}
+
+func checkRouterVersion(cliVersion string) HealthCheck {
+	running := RunningRouterVersion()
+	if running == "" {
+		return HealthCheck{
+			Name:   "router_version",
+			Status: "warn",
+			Detail: "no version file (router may predate version tracking)",
+			Fix:    "gtl serve install",
+		}
+	}
+	if running == cliVersion {
+		return HealthCheck{
+			Name:   "router_version",
+			Status: "ok",
+			Detail: running,
+		}
+	}
+	return HealthCheck{
+		Name:   "router_version",
+		Status: "warn",
+		Detail: fmt.Sprintf("router=%s, cli=%s", running, cliVersion),
+		Fix:    "gtl serve install",
 	}
 }
 
@@ -89,8 +115,8 @@ func checkRouterListening(port int) HealthCheck {
 			return HealthCheck{
 				Name:   "router_port",
 				Status: "error",
-				Detail: fmt.Sprintf("service registered but port %d not listening", port),
-				Fix:    "gtl serve uninstall && gtl serve install",
+			Detail: fmt.Sprintf("service registered but port %d not listening", port),
+			Fix:    "gtl serve install",
 			}
 		}
 		return HealthCheck{
@@ -135,7 +161,7 @@ func checkPortForward(routerPort int) HealthCheck {
 			Name:   "port_forwarding",
 			Status: "error",
 			Detail: "configured in pf.conf but port 443 not reachable — rules may need reload",
-			Fix:    "gtl serve uninstall && gtl serve install",
+			Fix:    "gtl serve install",
 		}
 	}
 	_ = conn.Close()

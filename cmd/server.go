@@ -14,6 +14,7 @@ import (
 	"github.com/git-treeline/git-treeline/internal/interpolation"
 	"github.com/git-treeline/git-treeline/internal/registry"
 	"github.com/git-treeline/git-treeline/internal/resolve"
+	"github.com/git-treeline/git-treeline/internal/service"
 	"github.com/git-treeline/git-treeline/internal/setup"
 	"github.com/git-treeline/git-treeline/internal/style"
 	"github.com/git-treeline/git-treeline/internal/supervisor"
@@ -58,6 +59,9 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 		}
 
 		warnPortWiring(startCommand, absPath)
+		if service.IsRunning() {
+			warnRouterVersionMismatch()
+		}
 
 		sockPath := supervisor.SocketPath(absPath)
 		port := resolvePort(absPath)
