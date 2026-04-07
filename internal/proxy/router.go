@@ -209,6 +209,14 @@ func (r *Router) proxyTo(w http.ResponseWriter, req *http.Request, targetPort in
 			pr.SetURL(target)
 			pr.Out.Host = pr.In.Host
 			pr.Out.Header.Set("X-Gtl-Hops", strconv.Itoa(hops+1))
+			if pr.In.TLS != nil {
+				pr.Out.Header.Set("X-Forwarded-Proto", "https")
+			} else if pr.In.Header.Get("X-Forwarded-Proto") == "" {
+				pr.Out.Header.Set("X-Forwarded-Proto", "http")
+			}
+			if pr.In.RemoteAddr != "" {
+				pr.Out.Header.Set("X-Forwarded-For", pr.In.RemoteAddr)
+			}
 		},
 	}
 	proxy.ServeHTTP(w, req)

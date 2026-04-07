@@ -36,9 +36,12 @@ func Run(opts Options) error {
 	}
 
 	proxy := &httputil.ReverseProxy{
-		Rewrite: func(r *httputil.ProxyRequest) {
-			r.SetURL(target)
-			r.Out.Host = r.In.Host
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.Out.Host = pr.In.Host
+			if opts.TLS {
+				pr.Out.Header.Set("X-Forwarded-Proto", "https")
+			}
 		},
 	}
 

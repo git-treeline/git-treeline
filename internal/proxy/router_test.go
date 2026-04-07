@@ -315,6 +315,39 @@ func TestRouterSetsHopHeader(t *testing.T) {
 	}
 }
 
+func TestRouterSetsForwardedProto(t *testing.T) {
+	targetPort := freePort(t)
+	var gotProto string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		gotProto = r.Header.Get("X-Forwarded-Proto")
+		_, _ = fmt.Fprint(w, "ok")
+	})
+	target := &http.Server{Addr: fmt.Sprintf(":%d", targetPort), Handler: mux}
+	go func() { _ = target.ListenAndServe() }()
+	defer func() { _ = target.Close() }()
+	waitForPort(t, targetPort)
+
+	reg := testRegistry(t, []registry.Allocation{
+		{"project": "salt", "branch": "main", "port": float64(targetPort), "ports": []any{float64(targetPort)}, "worktree": "/tmp/salt"},
+	})
+	router := NewRouter(0, reg)
+	ts := httptest.NewServer(router)
+	defer ts.Close()
+
+	req, _ := http.NewRequest("GET", ts.URL+"/", nil)
+	req.Host = "salt-main.localhost"
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if gotProto != "http" {
+		t.Errorf("expected X-Forwarded-Proto=http for plain HTTP, got %q", gotProto)
+	}
+}
+
 func TestRouterIncrementsHopCount(t *testing.T) {
 	targetPort := freePort(t)
 	var gotHeader string

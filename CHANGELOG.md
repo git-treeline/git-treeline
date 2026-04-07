@@ -1,3 +1,7 @@
+## [0.35.4]
+
+- **Set `X-Forwarded-Proto` and `X-Forwarded-For` on proxied requests** — the `gtl serve` router and `gtl proxy` now set standard forwarding headers when proxying to backends. Fixes CSRF origin mismatches in Rails and other frameworks that compare the `Origin` header against `request.base_url` — previously the backend saw `http://` while the browser sent `https://`.
+
 ## [0.35.2]
 
 - **`{router_url}` and `{router_domain}` env tokens** — the `env:` block in `.treeline.yml` now supports `{router_url}` (e.g. `https://salt-feature.prt.dev`) and `{router_domain}` (e.g. `prt.dev`). Use `{router_domain}` for composable values like Rails `config.hosts << ".{router_domain}"` or cookie domains. Use `localhost:{port}` for your app's canonical host — see README for guidance.
