@@ -57,6 +57,52 @@ func TestUserConfig_Init(t *testing.T) {
 	}
 }
 
+func TestRouterDomain_ExplicitValue(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"router":{"domain":"custom.dev"}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	if got := uc.RouterDomain(); got != "custom.dev" {
+		t.Errorf("expected custom.dev, got %s", got)
+	}
+}
+
+func TestRouterDomain_ExistingConfigNoDomain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"port":{"base":3002}}`), 0o644)
+
+	uc := LoadUserConfig(path)
+	if got := uc.RouterDomain(); got != "localhost" {
+		t.Errorf("expected localhost for pre-upgrade config, got %s", got)
+	}
+}
+
+func TestRouterDomain_NoConfigFile(t *testing.T) {
+	uc := LoadUserConfig("/nonexistent/path/config.json")
+	if got := uc.RouterDomain(); got != "prt.dev" {
+		t.Errorf("expected prt.dev for fresh machine, got %s", got)
+	}
+}
+
+func TestHasExplicitRouterDomain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(path, []byte(`{"router":{"domain":"localhost"}}`), 0o644)
+	uc := LoadUserConfig(path)
+	if !uc.HasExplicitRouterDomain() {
+		t.Error("expected true when domain is set")
+	}
+
+	path2 := filepath.Join(dir, "config2.json")
+	_ = os.WriteFile(path2, []byte(`{}`), 0o644)
+	uc2 := LoadUserConfig(path2)
+	if uc2.HasExplicitRouterDomain() {
+		t.Error("expected false when domain is absent")
+	}
+}
+
 func TestUserConfig_Get_TopLevel(t *testing.T) {
 	uc := LoadUserConfig("/nonexistent/config.json")
 	val := uc.Get("port")
@@ -512,8 +558,8 @@ func TestUserConfig_TunnelMigration_NoopIfAlreadyNew(t *testing.T) {
 
 func TestUserConfig_RouterDomain_Default(t *testing.T) {
 	uc := LoadUserConfig(filepath.Join(t.TempDir(), "config.json"))
-	if uc.RouterDomain() != "localhost" {
-		t.Errorf("expected default domain 'localhost', got %q", uc.RouterDomain())
+	if uc.RouterDomain() != "prt.dev" {
+		t.Errorf("expected default domain 'prt.dev', got %q", uc.RouterDomain())
 	}
 }
 

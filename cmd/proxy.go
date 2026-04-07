@@ -35,7 +35,7 @@ Examples:
   gtl proxy 3000 --tls       # HTTPS on :3000 → current worktree's port
 
 Related commands:
-  gtl serve    Local HTTPS subdomain router (https://{branch}.localhost)
+  gtl serve    Local HTTPS subdomain router (https://{branch}.prt.dev)
   gtl tunnel   Public HTTPS tunneling via Cloudflare`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {

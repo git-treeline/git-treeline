@@ -65,12 +65,12 @@ gtl serve install
 
 The installer will ask for your **system password twice** (via `sudo`):
 
-1. **Trust a local certificate authority** — Adds a dev CA to your login keychain (macOS) or equivalent so browsers accept `https://*.localhost` without certificate errors. This CA is what **`gtl setup` / `gtl new` require** on macOS/Linux.
-2. **Forward port 443** — Installs a rule so HTTPS on port 443 is forwarded to Treeline’s router (default listen port `3001`, configurable as `router.port`). That’s what makes `https://project-branch.localhost` work **without** `:3001` in the URL.
+1. **Trust a local certificate authority** — Adds a dev CA to your login keychain (macOS) or equivalent so browsers accept `https://*.prt.dev` without certificate errors. This CA is what **`gtl setup` / `gtl new` require** on macOS/Linux.
+2. **Forward port 443** — Installs a rule so HTTPS on port 443 is forwarded to Treeline’s router (default listen port `3001`, configurable as `router.port`). That’s what makes `https://project-branch.prt.dev` work **without** `:3001` in the URL.
 
-What gets installed: the CA, a wildcard server cert for `*.localhost`, a **background service** (`launchd` on macOS, `systemd` on Linux) that starts the router on boot, and the port-forward rule. See **`gtl serve status`** and **`gtl serve uninstall`** to inspect or remove.
+What gets installed: the CA, per-host server certs, a **background service** (`launchd` on macOS, `systemd` on Linux) that starts the router on boot, and the port-forward rule. See **`gtl serve status`** and **`gtl serve uninstall`** to inspect or remove.
 
-**Safari on macOS** does not treat `*.localhost` like Chrome or Firefox. After you have routes, run **`gtl serve hosts sync`** (asks for `sudo`) to add a managed block to `/etc/hosts`, or use another browser. On Linux, `*.localhost` usually resolves without this.
+**Safari on macOS** may not resolve custom domain subdomains without `/etc/hosts` entries. After you have routes, run **`gtl serve hosts sync`** (asks for `sudo`) to add a managed block to `/etc/hosts`, or use another browser. The default domain `prt.dev` has wildcard DNS pointing to 127.0.0.1; change it via `gtl config set router.domain yourdomain.dev`.
 
 ### 3. Per repository — `gtl init` and worktrees
 
@@ -146,7 +146,7 @@ Once you're running multiple worktrees, remembering port numbers gets old. Git T
 gtl serve install
 ```
 
-One-time setup that installs a background router mapping `https://{project}-{branch}.localhost` to the correct worktree port. After install, `https://salt-staff-reporting.localhost` just works — no port numbers, trusted HTTPS, automatic certificate management.
+One-time setup that installs a background router mapping `https://{project}-{branch}.prt.dev` to the correct worktree port. After install, `https://salt-staff-reporting.prt.dev` just works — no port numbers, trusted HTTPS, automatic certificate management.
 
 Requires macOS or Linux. The install needs `sudo` twice: once to trust the local CA, once to forward port 443 to the router.
 
@@ -228,7 +228,7 @@ Fetches the PR branch via `gh`, creates a worktree, allocates resources, runs se
 gtl open
 ```
 
-Opens the current worktree in your default browser. Prefers `https://{project}-{branch}.localhost` when `gtl serve` is running; falls back to `http://localhost:{port}`.
+Opens the current worktree in your default browser. Prefers `https://{project}-{branch}.prt.dev` when `gtl serve` is running; falls back to `http://localhost:{port}`.
 
 ### 9. Check project health
 
@@ -757,12 +757,13 @@ gtl db name --json         # {"database": "myapp_feature_xyz"}
 | `gtl restart` | | Restart the server process in the original terminal |
 | `gtl open` | | Open current worktree in browser (prefers serve HTTPS URL) |
 | `gtl clone <url>` | (passthrough to git) | Clone + detect framework + init + setup in one step |
-| `gtl env` | `--json` `--template` | Print env file with Treeline-managed key annotations |
+| `gtl env` / `gtl env show` | `--json` `--template` | Print env file with Treeline-managed key annotations |
+| `gtl env sync` | | Re-sync env file and editor settings from `.treeline.yml` |
 | `gtl resolve <project> [branch]` | `--json` | Look up another project's allocated URL |
 | `gtl link <project> <branch>` | `--restart` `--json` | Override resolve target for a project |
 | `gtl unlink <project>` | | Revert resolve override to same-branch default |
 | `gtl completion <shell>` | | Output shell completion script (bash, zsh, fish, powershell) |
-| `gtl serve` | | Local HTTPS subdomain router (`https://{branch}.localhost`) |
+| `gtl serve` | | Local HTTPS subdomain router (`https://{branch}.prt.dev`) |
 | `gtl serve install` | | One-time setup: CA trust, port forwarding, background service |
 | `gtl serve status` | | Show router routes and service health |
 | `gtl serve uninstall` | | Remove CA trust, port forwarding, and service |

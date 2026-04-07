@@ -112,8 +112,7 @@ func runReleaseSingle(args []string) error {
 		return nil
 	}
 
-	mainRepo := worktree.DetectMainRepo(absPath)
-	pc := config.LoadProjectConfig(mainRepo)
+	pc := config.LoadProjectConfig(absPath)
 	hooks := pc.Hooks()
 	if cmds, ok := hooks["pre_release"]; ok && len(cmds) > 0 {
 		if err := setup.RunHookCommands("pre_release", cmds, absPath, func(f string, a ...any) {

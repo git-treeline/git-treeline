@@ -47,8 +47,9 @@ func init() {
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Local HTTPS subdomain router for worktree access",
-	Long: `Starts a local HTTPS subdomain router that maps {project}-{branch}.localhost
+	Long: `Starts a local HTTPS subdomain router that maps {project}-{branch}.{domain}
 to the correct worktree port. Routes are derived from the git-treeline registry.
+Default domain is prt.dev (configurable via router.domain).
 
 When run without a subcommand, starts in foreground mode (useful for testing).
 Use 'gtl serve install' to run as a persistent system service.
@@ -69,10 +70,10 @@ var serveInstallCmd = &cobra.Command{
 system keychain, sets up port forwarding, and installs a background service.
 
 Requires sudo for two things (explained before each prompt):
-  - Trusting the CA so browsers accept https://*.localhost
+  - Trusting the CA so browsers accept https://*.{domain}
   - Redirecting port 443 → the router so URLs need no port number
 
-After install, access worktrees at https://{project}-{branch}.localhost`,
+After install, access worktrees at https://{project}-{branch}.{domain}`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 			return &CliError{
@@ -94,8 +95,17 @@ After install, access worktrees at https://{project}-{branch}.localhost`,
 			return fmt.Errorf("CA generation failed: %w", err)
 		}
 
+		domain := uc.RouterDomain()
+
+		if !uc.HasExplicitRouterDomain() {
+			uc.Set("router.domain", domain)
+			if err := uc.Save(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not persist router.domain: %s\n", err)
+			}
+		}
+
 		fmt.Println("System password needed for:")
-		fmt.Println("  1. Trusting the CA (browsers accept *.localhost)")
+		fmt.Printf("  1. Trusting the CA (browsers accept *.%s)\n", domain)
 		fmt.Printf("  2. Port forwarding (443 → %d)\n", port)
 		fmt.Println()
 
@@ -106,7 +116,7 @@ After install, access worktrees at https://{project}-{branch}.localhost`,
 
 		if err := service.InstallPortForward(port); err != nil {
 			fmt.Fprintln(os.Stderr, style.Warnf("port forwarding skipped: %v", err))
-			fmt.Fprintln(os.Stderr, style.Dimf("  URLs will require a port number: https://{branch}.localhost:%d", port))
+			fmt.Fprintln(os.Stderr, style.Dimf("  URLs will require a port number: https://{branch}.%s:%d", domain, port))
 			fmt.Println()
 		}
 
@@ -114,7 +124,6 @@ After install, access worktrees at https://{project}-{branch}.localhost`,
 			return err
 		}
 
-		domain := uc.RouterDomain()
 		hostsRequired := domain != "localhost"
 		if runtime.GOOS == "darwin" || hostsRequired {
 			hostnames := routeHostnames(domain)
@@ -297,7 +306,7 @@ var serveAliasCmd = &cobra.Command{
 	Long: `Add, remove, or list static subdomain aliases.
 
 Aliases let you route non-gtl services through the router:
-  gtl serve alias redis-ui 8081    → redis-ui.localhost:8081
+  gtl serve alias redis-ui 8081    → redis-ui.{domain}:8081
   gtl serve alias --remove redis-ui
   gtl serve alias                  → list all aliases`,
 	Args: cobra.MaximumNArgs(2),

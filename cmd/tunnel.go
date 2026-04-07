@@ -51,7 +51,7 @@ Run 'gtl tunnel setup' first to configure a named tunnel with your domain.
 Run 'gtl tunnel status' to see current tunnel configuration.
 
 Related commands:
-  gtl serve    Local HTTPS subdomain router (https://{branch}.localhost)
+  gtl serve    Local HTTPS subdomain router (https://{branch}.prt.dev)
   gtl proxy    Forward a single port (e.g. OAuth callbacks on :3000)`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -481,8 +481,7 @@ func resolveProjectAndBranch(entry format.Allocation) (string, string) {
 	}
 	absPath, _ := filepath.Abs(cwd)
 
-	mainRepo := worktree.DetectMainRepo(absPath)
-	pc := config.LoadProjectConfig(mainRepo)
+	pc := config.LoadProjectConfig(absPath)
 	project := pc.Project()
 	if project == "" {
 		return "", ""

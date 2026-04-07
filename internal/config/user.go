@@ -112,12 +112,29 @@ func (uc *UserConfig) RouterPort() int {
 	return 3001
 }
 
-// RouterDomain returns the base domain for local routing. Default: "localhost".
+// RouterDomain returns the base domain for local routing.
+//
+// Resolution order:
+//  1. Explicit router.domain in config.json → use it
+//  2. Config file exists but router.domain absent → "localhost" (pre-prt.dev install)
+//  3. No config file at all → "prt.dev" (fresh machine)
+//
+// This prevents upgrading the CLI binary from silently changing the domain
+// for users who never explicitly set it.
 func (uc *UserConfig) RouterDomain() string {
 	if v, ok := Dig(uc.Data, "router", "domain").(string); ok && v != "" {
 		return v
 	}
-	return "localhost"
+	if uc.Exists() {
+		return "localhost"
+	}
+	return "prt.dev"
+}
+
+// HasExplicitRouterDomain reports whether router.domain is set in config.json.
+func (uc *UserConfig) HasExplicitRouterDomain() bool {
+	v, ok := Dig(uc.Data, "router", "domain").(string)
+	return ok && v != ""
 }
 
 // SafariWarningsEnabled returns whether to show Safari/hosts sync warnings.

@@ -191,7 +191,7 @@ func (s *Supervisor) acceptLoop() {
 func (s *Supervisor) handleConn(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	buf := make([]byte, 64)
+	buf := make([]byte, 4096)
 	n, err := conn.Read(buf)
 	if err != nil {
 		return
@@ -239,6 +239,26 @@ func (s *Supervisor) handleConn(conn net.Conn) {
 		} else {
 			_, _ = fmt.Fprint(conn, "stopped")
 		}
+	case "get-command":
+		// s.Command is set at construction and never mutated — no lock needed.
+		_, _ = fmt.Fprint(conn, s.Command)
+	case "update-env":
+		if len(parts) < 2 || parts[1] == "" {
+			_, _ = fmt.Fprint(conn, "ok")
+			return
+		}
+		s.mu.Lock()
+		if s.Env == nil {
+			s.Env = make(map[string]string)
+		}
+		for _, pair := range strings.Split(parts[1], "\x00") {
+			kv := strings.SplitN(pair, "=", 2)
+			if len(kv) == 2 {
+				s.Env[kv[0]] = kv[1]
+			}
+		}
+		s.mu.Unlock()
+		_, _ = fmt.Fprint(conn, "ok")
 	case "wait-ready":
 		timeout := 60 * time.Second
 		if len(parts) > 1 {

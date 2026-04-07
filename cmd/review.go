@@ -162,6 +162,7 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 		}
 
 		if reviewStart {
+			pc = config.LoadProjectConfig(wtPath)
 			startCmd := pc.StartCommand()
 			if startCmd == "" {
 				fmt.Println("Warning: --start passed but no commands.start configured in .treeline.yml")

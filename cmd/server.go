@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -88,6 +89,13 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 			return nil
 		}
 
+		uc := config.LoadUserConfig("")
+		if err := setup.RegenerateEnvFile(absPath, uc); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: env sync skipped: %s\n", err)
+		}
+		branch := worktree.CurrentBranch(absPath)
+		setup.ConfigureEditor(absPath, pc, uc, port, branch)
+
 		if startAwait {
 			sv := supervisor.New(startCommand, absPath, sockPath)
 			sv.Env = resolveEnvVars(pc, absPath)
@@ -162,13 +170,38 @@ var restartCmd = &cobra.Command{
 	Use:   "restart",
 	Short: "Restart the supervised dev server",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sockPath, err := resolveSocket()
+		cwd, err := os.Getwd()
 		if err != nil {
 			return err
 		}
+		absPath, _ := filepath.Abs(cwd)
+		sockPath := supervisor.SocketPath(absPath)
+
+		pc := config.LoadProjectConfig(absPath)
+		uc := config.LoadUserConfig("")
+
+		if err := setup.RegenerateEnvFile(absPath, uc); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: env sync skipped: %s\n", err)
+		}
+
+		envVars := resolveEnvVars(pc, absPath)
+		if len(envVars) > 0 {
+			var pairs []string
+			for k, v := range envVars {
+				pairs = append(pairs, k+"="+v)
+			}
+			payload := "update-env:" + strings.Join(pairs, "\x00")
+			if _, err := supervisor.Send(sockPath, payload); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: could not update supervisor env: %s\n", err)
+			}
+		}
+
 		resp, err := supervisor.Send(sockPath, "restart")
 		if err != nil {
-			return err
+			return &CliError{
+				Message: fmt.Sprintf("Could not reach supervisor: %s", err),
+				Hint:    "Is 'gtl start' running? Start the server first, then use 'gtl restart'.",
+			}
 		}
 		if strings.HasPrefix(resp, "error") {
 			return &CliError{
@@ -177,8 +210,29 @@ var restartCmd = &cobra.Command{
 			}
 		}
 		fmt.Println("Server restarted.")
+
+		newStartCmd := pc.StartCommand()
+		if newStartCmd != "" {
+			port := resolvePort(absPath)
+			newStartCmd = interpolateCommand(newStartCmd, port)
+			if running, err := supervisor.Send(sockPath, "get-command"); err == nil {
+				warnStaleCommand(os.Stderr, running, newStartCmd)
+			}
+		}
+
 		return nil
 	},
+}
+
+// warnStaleCommand prints a hint if the supervisor's active command differs
+// from the config's current commands.start value.
+func warnStaleCommand(w io.Writer, running, configured string) {
+	if running == configured {
+		return
+	}
+	fmt.Fprintln(w, style.Warnf("Note: commands.start has changed in .treeline.yml."))
+	fmt.Fprintln(w, style.Dimf("  The supervisor is still using the original command."))
+	fmt.Fprintln(w, style.Dimf("  To apply: Ctrl+C the supervisor, then run 'gtl start'."))
 }
 
 // resolveEnvVars looks up the worktree's allocation from the registry and

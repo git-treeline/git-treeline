@@ -1,6 +1,15 @@
-## [Unreleased]
+## [0.35.0]
 
-- **Branch-specific config loading** — `gtl start`, `gtl doctor`, `gtl env`, and `gtl editor refresh` now load `.treeline.yml` from the worktree instead of the main repo. This means branch-specific config overrides (e.g., different `commands.start` per branch) work correctly. Commands that provision worktrees (`gtl new`, `gtl review`, `gtl clone`) still use the main repo config as the canonical source.
+- **Complete worktree config loading** — all commands now load `.treeline.yml` from the worktree you're in: `gtl open`, `gtl tunnel`, `gtl db`, `gtl release`, `gtl refresh`, plus `--start` in `gtl new`/`gtl review`. Branch-specific config overrides work everywhere. Commands that create worktrees (`gtl new`, `gtl review`) read from the main repo before creation, then switch to the new worktree's config for setup and `--start`.
+- **Env sync on `gtl start`** — fresh `gtl start` (no supervisor running) now re-reads `env:` from `.treeline.yml` and updates the env file (e.g. `.env.local`) before starting the server. Editor settings are also synced. No more stale env files after editing `.treeline.yml`.
+- **Env sync on `gtl restart`** — `gtl restart` syncs the env file and pushes updated environment variables to the supervisor's in-memory env map before restarting. Both the env file and the child process env are up to date.
+- **Stale command detection** — `gtl restart` now warns if `commands.start` in `.treeline.yml` differs from what the supervisor is running, with a hint to Ctrl+C and `gtl start` fresh.
+- **`gtl env sync` command** — new subcommand that re-syncs the env file and editor settings from `.treeline.yml` without starting a server. For users who start their server outside of `gtl`.
+- **`gtl env show` subcommand** — `gtl env` is now a parent command. The previous `gtl env` behavior is available as `gtl env show` (or just `gtl env` with no subcommand, which defaults to show). `gtl env --json` and `gtl env --template` continue to work.
+- **`gtl worktree` command** — prints the worktree path for the current directory. Useful for scripting and agent tooling.
+- **Default domain `prt.dev` for new installs** — new installs default to `prt.dev` instead of `localhost`. Existing installs are not affected — the CLI detects pre-existing configs and preserves `localhost`. `gtl serve install` now persists `router.domain` to `config.json`. See `docs/DOMAIN_MIGRATION.md` for details.
+- **pfctl anchor recreation fix** — `gtl serve install` now checks that the pf anchor file exists, not just the pf.conf marker. Fixes "port forwarding skipped" errors after running `gtl serve uninstall` then `gtl serve install`.
+- **`gtl refresh` uses worktree `port_count`** — `gtl refresh` detection now reads `port_count` from the worktree's `.treeline.yml` instead of the main repo's. Branch-specific port count changes are now detected correctly.
 
 ## [0.33.0]
 

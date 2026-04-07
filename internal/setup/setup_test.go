@@ -74,6 +74,20 @@ func TestUpdateOrAppend_CreatesFileIfMissing(t *testing.T) {
 	}
 }
 
+// --- RegenerateEnvFile tests ---
+
+func TestRegenerateEnvFile_NilWhenNoAllocation(t *testing.T) {
+	dir := t.TempDir()
+	confPath := filepath.Join(dir, "config.json")
+	_ = os.WriteFile(confPath, []byte(`{}`), 0o644)
+	uc := config.LoadUserConfig(confPath)
+
+	err := RegenerateEnvFile(dir, uc)
+	if err != nil {
+		t.Errorf("expected nil when no allocation, got: %v", err)
+	}
+}
+
 // --- helper to build a testable Setup ---
 
 func testSetup(t *testing.T, yamlContent string) (*Setup, string, string) {

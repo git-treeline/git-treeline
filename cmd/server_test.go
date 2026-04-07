@@ -116,6 +116,27 @@ func TestWarnPortWiring_UnknownFramework(t *testing.T) {
 	}
 }
 
+func TestWarnStaleCommand_PrintsWhenDifferent(t *testing.T) {
+	out := captureStderr(t, func() {
+		warnStaleCommand(os.Stderr, "npm run dev --port 3000", "npm run dev --port 4000")
+	})
+	if !strings.Contains(out, "commands.start has changed") {
+		t.Errorf("expected stale command warning, got: %q", out)
+	}
+	if !strings.Contains(out, "gtl start") {
+		t.Errorf("expected hint to run gtl start, got: %q", out)
+	}
+}
+
+func TestWarnStaleCommand_SilentWhenSame(t *testing.T) {
+	out := captureStderr(t, func() {
+		warnStaleCommand(os.Stderr, "npm run dev --port 3000", "npm run dev --port 3000")
+	})
+	if out != "" {
+		t.Errorf("expected no output when commands match, got: %q", out)
+	}
+}
+
 func TestInterpolateCommand(t *testing.T) {
 	tests := []struct {
 		name string

@@ -155,6 +155,108 @@ func TestSupervisor_Restart(t *testing.T) {
 	<-errCh
 }
 
+func TestSupervisor_UpdateEnv(t *testing.T) {
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "test.sock")
+	envOut := filepath.Join(dir, "env.out")
+
+	cmd := "env > " + envOut + " && sleep 60"
+	sv := New(cmd, dir, sock)
+	sv.Env = map[string]string{"GTL_TEST": "original"}
+	sv.Log = func(f string, a ...any) {}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- sv.Run() }()
+
+	waitForSocket(t, sock, 2*time.Second)
+	waitForFile(t, envOut, 2*time.Second)
+
+	data, _ := os.ReadFile(envOut)
+	if !strings.Contains(string(data), "GTL_TEST=original") {
+		t.Fatalf("expected GTL_TEST=original in initial env, got:\n%s", data)
+	}
+
+	// Update env via socket
+	resp, err := Send(sock, "update-env:GTL_TEST=updated\x00GTL_NEW=added")
+	if err != nil {
+		t.Fatalf("update-env failed: %v", err)
+	}
+	if resp != "ok" {
+		t.Errorf("expected ok, got %s", resp)
+	}
+
+	// Restart so the child picks up the new env
+	resp, err = Send(sock, "restart")
+	if err != nil {
+		t.Fatalf("restart failed: %v", err)
+	}
+	if resp != "ok" {
+		t.Errorf("expected ok from restart, got %s", resp)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	data, _ = os.ReadFile(envOut)
+	if !strings.Contains(string(data), "GTL_TEST=updated") {
+		t.Errorf("expected GTL_TEST=updated after restart, got:\n%s", data)
+	}
+	if !strings.Contains(string(data), "GTL_NEW=added") {
+		t.Errorf("expected GTL_NEW=added after restart, got:\n%s", data)
+	}
+
+	_, _ = Send(sock, "shutdown")
+	<-errCh
+}
+
+func TestSupervisor_GetCommand(t *testing.T) {
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "test.sock")
+
+	cmd := "sleep 60"
+	sv := New(cmd, dir, sock)
+	sv.Log = func(f string, a ...any) {}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- sv.Run() }()
+
+	waitForSocket(t, sock, 2*time.Second)
+
+	resp, err := Send(sock, "get-command")
+	if err != nil {
+		t.Fatalf("get-command failed: %v", err)
+	}
+	if resp != cmd {
+		t.Errorf("get-command returned %q, want %q", resp, cmd)
+	}
+
+	_, _ = Send(sock, "shutdown")
+	<-errCh
+}
+
+func TestSupervisor_UpdateEnvEmpty(t *testing.T) {
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "test.sock")
+
+	sv := New("sleep 60", dir, sock)
+	sv.Log = func(f string, a ...any) {}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- sv.Run() }()
+
+	waitForSocket(t, sock, 2*time.Second)
+
+	resp, err := Send(sock, "update-env:")
+	if err != nil {
+		t.Fatalf("update-env with empty payload failed: %v", err)
+	}
+	if resp != "ok" {
+		t.Errorf("expected ok, got %s", resp)
+	}
+
+	_, _ = Send(sock, "shutdown")
+	<-errCh
+}
+
 func TestSupervisor_StatusWhenStopped(t *testing.T) {
 	_, err := Send("/nonexistent/test.sock", "status")
 	if err == nil {

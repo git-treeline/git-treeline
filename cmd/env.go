@@ -22,13 +22,26 @@ var envTemplate bool
 var envLineRE = regexp.MustCompile(`^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$`)
 
 func init() {
-	envCmd.Flags().BoolVar(&envJSON, "json", false, "Output as JSON")
-	envCmd.Flags().BoolVar(&envTemplate, "template", false, "Print unresolved env: template from .treeline.yml")
+	envCmd.PersistentFlags().BoolVar(&envJSON, "json", false, "Output as JSON")
+	envCmd.PersistentFlags().BoolVar(&envTemplate, "template", false, "Print unresolved env: template from .treeline.yml")
+	envCmd.AddCommand(envShowCmd)
+	envCmd.AddCommand(envSyncCmd)
 	rootCmd.AddCommand(envCmd)
 }
 
 var envCmd = &cobra.Command{
 	Use:   "env",
+	Short: "Manage environment variables for this worktree",
+	Long: `Show or sync environment variables managed by Treeline.
+
+Without a subcommand, shows the current env file contents (same as 'gtl env show').`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return envShowCmd.RunE(envShowCmd, args)
+	},
+}
+
+var envShowCmd = &cobra.Command{
+	Use:   "show",
 	Short: "Show env file contents and Treeline-managed keys for this worktree",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -37,7 +50,6 @@ var envCmd = &cobra.Command{
 			return err
 		}
 		absPath, _ := filepath.Abs(cwd)
-		// Load from worktree (not mainRepo) so branch-specific config is respected
 		pc := config.LoadProjectConfig(absPath)
 
 		if envTemplate {
@@ -96,8 +108,8 @@ var envCmd = &cobra.Command{
 			}
 			sort.Strings(managedKeys)
 			data, err := json.MarshalIndent(map[string]any{
-				"file":              pc.EnvFileTarget(),
-				"vars":              varsMap,
+				"file":             pc.EnvFileTarget(),
+				"vars":             varsMap,
 				"treeline_managed": managedKeys,
 			}, "", "  ")
 			if err != nil {

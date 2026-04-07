@@ -80,7 +80,14 @@ func installDarwinPortForward(routerPort int) error {
 		return fmt.Errorf("could not read %s: %w", pfConfPath, err)
 	}
 
-	if strings.Contains(string(pfConf), pfMarker()) {
+	// Check both pf.conf AND the anchor file exist — if anchor is missing,
+	// we need to recreate it even if pf.conf has the marker.
+	anchorExists := true
+	if _, err := os.Stat(pfAnchorPath()); os.IsNotExist(err) {
+		anchorExists = false
+	}
+
+	if strings.Contains(string(pfConf), pfMarker()) && anchorExists {
 		fmt.Println("  Port forwarding already configured (443 → router).")
 		return reloadPf()
 	}

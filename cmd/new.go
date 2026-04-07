@@ -208,6 +208,7 @@ Otherwise a new branch is created from --base (or the current branch).`,
 		}
 
 		if newStart {
+			pc = config.LoadProjectConfig(wtPath)
 			startCmd := pc.StartCommand()
 			if startCmd == "" {
 				fmt.Println(style.Warnf("--start passed but no commands.start configured in .treeline.yml"))

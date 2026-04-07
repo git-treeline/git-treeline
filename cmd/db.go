@@ -164,7 +164,7 @@ func resolveDB() (*dbInfo, error) {
 
 	absPath, _ := filepath.Abs(cwd)
 	mainRepo := worktree.DetectMainRepo(absPath)
-	pc := config.LoadProjectConfig(mainRepo)
+	pc := config.LoadProjectConfig(absPath)
 
 	reg := registry.New("")
 	alloc := reg.Find(absPath)

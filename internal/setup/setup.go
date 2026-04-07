@@ -47,13 +47,22 @@ type Setup struct {
 	Resolver      interpolation.ResolveFunc
 }
 
+// New creates a Setup that loads .treeline.yml from the worktree path, not the
+// main repo — branch-specific config is respected. The mainRepo path is still
+// used for copy_files source and SQLite template paths.
+//
+// All callers operate on worktrees that already exist (either just created by
+// git worktree add, or resuming an existing one). The initial project detection
+// before worktree creation happens in the cmd layer (e.g. cmd/new.go loads
+// config from mainRepo to get the project name, then passes the worktree path
+// here after creation).
 func New(worktreePath string, mainRepo string, uc *config.UserConfig) *Setup {
 	absPath, _ := filepath.Abs(worktreePath)
 	if mainRepo == "" {
 		mainRepo = worktree.DetectMainRepo(absPath)
 	}
 
-	pc := config.LoadProjectConfig(mainRepo)
+	pc := config.LoadProjectConfig(absPath)
 	reg := registry.New("")
 	al := allocator.New(uc, pc, reg)
 
@@ -270,7 +279,7 @@ func RegenerateEnvFile(worktreePath string, uc *config.UserConfig) error {
 
 	allocMap := reg.Find(absPath)
 	if allocMap == nil {
-		return fmt.Errorf("no allocation found for %s", absPath)
+		return nil
 	}
 
 	// Convert registry map to interpolation.Allocation for env var building

@@ -238,8 +238,7 @@ func detectPortChange(project, branch string, currentPorts []int, isMain bool, r
 		}
 	}
 
-	mainRepo := worktree.DetectMainRepo(wtPath)
-	pc := config.LoadProjectConfig(mainRepo)
+	pc := config.LoadProjectConfig(wtPath)
 	if pc != nil && len(currentPorts) != pc.PortsNeeded() {
 		return true, fmt.Sprintf("port_count changed (%d → %d)", len(currentPorts), pc.PortsNeeded())
 	}

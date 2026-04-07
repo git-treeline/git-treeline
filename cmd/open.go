@@ -12,7 +12,6 @@ import (
 	"github.com/git-treeline/git-treeline/internal/proxy"
 	"github.com/git-treeline/git-treeline/internal/registry"
 	"github.com/git-treeline/git-treeline/internal/service"
-	"github.com/git-treeline/git-treeline/internal/worktree"
 	"github.com/spf13/cobra"
 )
 
@@ -43,8 +42,7 @@ var openCmd = &cobra.Command{
 			return errNoAllocationNoPorts(absPath)
 		}
 
-		mainRepo := worktree.DetectMainRepo(absPath)
-		pc := config.LoadProjectConfig(mainRepo)
+		pc := config.LoadProjectConfig(absPath)
 		uc := config.LoadUserConfig("")
 
 		project := pc.Project()
