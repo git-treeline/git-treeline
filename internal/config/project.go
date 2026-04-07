@@ -167,6 +167,45 @@ func (pc *ProjectConfig) Hooks() map[string][]string {
 	return result
 }
 
+// StartHook defines a named hook activated via `gtl start --with <name>`.
+// Both fields are optional — a hook can define only pre_start, only
+// post_stop, or both.
+type StartHook struct {
+	PreStart string
+	PostStop string
+}
+
+// StartHooks returns named start-lifecycle hooks from the hooks: block.
+// Only map-valued entries with pre_start/post_stop keys are returned;
+// array-valued entries (pre_setup, post_setup, etc.) are ignored.
+func (pc *ProjectConfig) StartHooks() map[string]StartHook {
+	raw, ok := pc.Data["hooks"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	result := make(map[string]StartHook)
+	for name, v := range raw {
+		m, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		h := StartHook{}
+		if s, ok := m["pre_start"].(string); ok {
+			h.PreStart = s
+		}
+		if s, ok := m["post_stop"].(string); ok {
+			h.PostStop = s
+		}
+		if h.PreStart != "" || h.PostStop != "" {
+			result[name] = h
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 func (pc *ProjectConfig) SetupCommands() []string {
 	raw, ok := Dig(pc.Data, "commands", "setup").([]any)
 	if !ok {

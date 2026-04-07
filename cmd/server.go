@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -25,10 +26,12 @@ import (
 
 var startAwait bool
 var startAwaitTimeout int
+var startWith string
 
 func init() {
 	startCmd.Flags().BoolVar(&startAwait, "await", false, "Block until the server is accepting connections, then exit 0")
 	startCmd.Flags().IntVar(&startAwaitTimeout, "await-timeout", 60, "Timeout in seconds for --await")
+	startCmd.Flags().StringVar(&startWith, "with", "", "Comma-separated hooks to activate (defined in .treeline.yml hooks:)")
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(restartCmd)
@@ -50,7 +53,6 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 			return err
 		}
 		absPath, _ := filepath.Abs(cwd)
-		// Load from worktree (not mainRepo) so branch-specific config is respected
 		pc := config.LoadProjectConfig(absPath)
 
 		startCommand := pc.StartCommand()
@@ -63,13 +65,22 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 			warnRouterVersionMismatch()
 		}
 
+		activeHooks, err := resolveStartHooks(pc, startWith)
+		if err != nil {
+			return err
+		}
+
 		sockPath := supervisor.SocketPath(absPath)
 		port := resolvePort(absPath)
 
 		startCommand = interpolateCommand(startCommand, port)
 
+		// Resume path — supervisor already running, no hooks re-fired
 		resp, err := supervisor.Send(sockPath, "status")
 		if err == nil {
+			if len(activeHooks) > 0 {
+				fmt.Fprintln(os.Stderr, style.Warnf("--with ignored: supervisor already running. Hooks only run on fresh start."))
+			}
 			if resp == "running" {
 				if startAwait {
 					return awaitReady(sockPath)
@@ -91,6 +102,14 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 				return awaitReady(sockPath)
 			}
 			return nil
+		}
+
+		// Fresh start path — run pre_start hooks
+		if err := runPreStartHooks(activeHooks, port, absPath); err != nil {
+			return err
+		}
+		if len(activeHooks) > 0 {
+			writeHooksState(sockPath, activeHooks)
 		}
 
 		uc := config.LoadUserConfig("")
@@ -140,7 +159,12 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 		sv := supervisor.New(startCommand, absPath, sockPath)
 		sv.Env = resolveEnvVars(pc, absPath)
 		sv.Port = port
-		return sv.Run()
+		svErr := sv.Run()
+
+		// Post-stop hooks — run after supervisor exits (reverse order)
+		runPostStopHooks(sockPath, pc, port, absPath)
+
+		return svErr
 	},
 }
 
@@ -321,6 +345,132 @@ func warnPortWiring(startCommand, worktreePath string) {
 		fmt.Fprintln(os.Stderr, style.Dimf("  The server may start on the wrong port. See 'gtl doctor' for details."))
 		fmt.Fprintln(os.Stderr)
 	}
+}
+
+// --- Start hooks ---
+
+// resolveStartHooks parses the --with flag and validates hook names
+// against the project config. Returns an ordered slice of (name, hook) pairs.
+func resolveStartHooks(pc *config.ProjectConfig, withFlag string) ([]startHookEntry, error) {
+	if withFlag == "" {
+		return nil, nil
+	}
+	allHooks := pc.StartHooks()
+	if allHooks == nil {
+		return nil, &CliError{
+			Message: "No hooks defined in .treeline.yml.",
+			Hint:    "Add a hooks: block with named pre_start/post_stop entries.",
+		}
+	}
+	var result []startHookEntry
+	for _, name := range strings.Split(withFlag, ",") {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		h, ok := allHooks[name]
+		if !ok {
+			available := make([]string, 0, len(allHooks))
+			for k := range allHooks {
+				available = append(available, k)
+			}
+			return nil, &CliError{
+				Message: fmt.Sprintf("Unknown hook %q.", name),
+				Hint:    fmt.Sprintf("Available hooks: %s", strings.Join(available, ", ")),
+			}
+		}
+		result = append(result, startHookEntry{Name: name, Hook: h})
+	}
+	return result, nil
+}
+
+type startHookEntry struct {
+	Name string
+	Hook config.StartHook
+}
+
+// runPreStartHooks executes pre_start commands. Aborts on first failure.
+func runPreStartHooks(hooks []startHookEntry, port int, dir string) error {
+	for _, entry := range hooks {
+		if entry.Hook.PreStart == "" {
+			continue
+		}
+		expanded := interpolateCommand(entry.Hook.PreStart, port)
+		fmt.Printf("==> Hook [%s] pre_start: %s\n", entry.Name, expanded)
+		cmd := exec.Command("sh", "-c", expanded)
+		cmd.Dir = dir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return &CliError{
+				Message: fmt.Sprintf("Hook %q pre_start failed: %s", entry.Name, err),
+				Hint:    "Fix the hook command or start without --with.",
+			}
+		}
+	}
+	return nil
+}
+
+// runPostStopHooks reads the hooks state file, re-reads the project config,
+// and runs post_stop commands in reverse order. Errors are logged, not fatal.
+func runPostStopHooks(sockPath string, pc *config.ProjectConfig, port int, dir string) {
+	names := readHooksState(sockPath)
+	if len(names) == 0 {
+		return
+	}
+	defer cleanHooksState(sockPath)
+
+	allHooks := pc.StartHooks()
+	if allHooks == nil {
+		return
+	}
+
+	// Reverse order
+	for i := len(names) - 1; i >= 0; i-- {
+		h, ok := allHooks[names[i]]
+		if !ok || h.PostStop == "" {
+			continue
+		}
+		expanded := interpolateCommand(h.PostStop, port)
+		fmt.Printf("==> Hook [%s] post_stop: %s\n", names[i], expanded)
+		cmd := exec.Command("sh", "-c", expanded)
+		cmd.Dir = dir
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: hook %q post_stop failed: %s\n", names[i], err)
+		}
+	}
+}
+
+// hooksStatePath returns the path for persisting active hook names alongside
+// the supervisor socket.
+func hooksStatePath(sockPath string) string {
+	return strings.TrimSuffix(sockPath, ".sock") + ".hooks"
+}
+
+func writeHooksState(sockPath string, hooks []startHookEntry) {
+	names := make([]string, len(hooks))
+	for i, h := range hooks {
+		names[i] = h.Name
+	}
+	_ = os.WriteFile(hooksStatePath(sockPath), []byte(strings.Join(names, "\n")), 0o600)
+}
+
+func readHooksState(sockPath string) []string {
+	data, err := os.ReadFile(hooksStatePath(sockPath))
+	if err != nil {
+		return nil
+	}
+	raw := strings.TrimSpace(string(data))
+	if raw == "" {
+		return nil
+	}
+	return strings.Split(raw, "\n")
+}
+
+func cleanHooksState(sockPath string) {
+	_ = os.Remove(hooksStatePath(sockPath))
 }
 
 func awaitReady(sockPath string) error {

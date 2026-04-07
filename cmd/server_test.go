@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/git-treeline/git-treeline/internal/config"
 )
 
 // captureStderr runs fn and returns everything written to os.Stderr.
@@ -134,6 +136,190 @@ func TestWarnStaleCommand_SilentWhenSame(t *testing.T) {
 	})
 	if out != "" {
 		t.Errorf("expected no output when commands match, got: %q", out)
+	}
+}
+
+// --- Start hook tests ---
+
+func TestResolveStartHooks_NoFlag(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte("project: test\n"), 0o644)
+	pc := config.LoadProjectConfig(dir)
+
+	hooks, err := resolveStartHooks(pc, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hooks != nil {
+		t.Errorf("expected nil, got %v", hooks)
+	}
+}
+
+func TestResolveStartHooks_ValidHook(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: test\nhooks:\n  oauth:\n    pre_start: echo go\n    post_stop: echo done\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := config.LoadProjectConfig(dir)
+
+	hooks, err := resolveStartHooks(pc, "oauth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hooks) != 1 || hooks[0].Name != "oauth" {
+		t.Errorf("expected [oauth], got %v", hooks)
+	}
+}
+
+func TestResolveStartHooks_MultipleHooks(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: test\nhooks:\n  oauth:\n    pre_start: echo a\n  workers:\n    pre_start: echo b\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := config.LoadProjectConfig(dir)
+
+	hooks, err := resolveStartHooks(pc, "oauth,workers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hooks) != 2 {
+		t.Errorf("expected 2 hooks, got %d", len(hooks))
+	}
+}
+
+func TestResolveStartHooks_UnknownHook(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: test\nhooks:\n  oauth:\n    pre_start: echo go\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := config.LoadProjectConfig(dir)
+
+	_, err := resolveStartHooks(pc, "bogus")
+	if err == nil {
+		t.Fatal("expected error for unknown hook")
+	}
+	if !strings.Contains(err.Error(), "Unknown hook") {
+		t.Errorf("expected 'Unknown hook' in error, got: %s", err)
+	}
+}
+
+func TestResolveStartHooks_NoHooksDefined(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte("project: test\n"), 0o644)
+	pc := config.LoadProjectConfig(dir)
+
+	_, err := resolveStartHooks(pc, "oauth")
+	if err == nil {
+		t.Fatal("expected error when no hooks defined")
+	}
+	if !strings.Contains(err.Error(), "No hooks defined") {
+		t.Errorf("expected 'No hooks defined' in error, got: %s", err)
+	}
+}
+
+func TestRunPreStartHooks_Success(t *testing.T) {
+	dir := t.TempDir()
+	hooks := []startHookEntry{
+		{Name: "test", Hook: config.StartHook{PreStart: "echo hello > " + filepath.Join(dir, "out.txt")}},
+	}
+	if err := runPreStartHooks(hooks, 3000, dir); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "out.txt"))
+	if err != nil {
+		t.Fatal("hook command didn't write file")
+	}
+	if !strings.Contains(string(data), "hello") {
+		t.Errorf("unexpected content: %s", data)
+	}
+}
+
+func TestRunPreStartHooks_Interpolation(t *testing.T) {
+	dir := t.TempDir()
+	hooks := []startHookEntry{
+		{Name: "test", Hook: config.StartHook{PreStart: "echo {port} > " + filepath.Join(dir, "port.txt")}},
+	}
+	if err := runPreStartHooks(hooks, 4567, dir); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "port.txt"))
+	if !strings.Contains(string(data), "4567") {
+		t.Errorf("expected interpolated port 4567, got: %s", data)
+	}
+}
+
+func TestRunPreStartHooks_FailureAborts(t *testing.T) {
+	hooks := []startHookEntry{
+		{Name: "fail", Hook: config.StartHook{PreStart: "exit 1"}},
+	}
+	err := runPreStartHooks(hooks, 3000, os.TempDir())
+	if err == nil {
+		t.Fatal("expected error on hook failure")
+	}
+	if !strings.Contains(err.Error(), "fail") {
+		t.Errorf("expected hook name in error, got: %s", err)
+	}
+}
+
+func TestRunPreStartHooks_SkipsEmptyPreStart(t *testing.T) {
+	hooks := []startHookEntry{
+		{Name: "cleanup-only", Hook: config.StartHook{PostStop: "echo done"}},
+	}
+	if err := runPreStartHooks(hooks, 3000, os.TempDir()); err != nil {
+		t.Fatalf("expected no error for empty pre_start, got: %s", err)
+	}
+}
+
+func TestHooksStateRoundTrip(t *testing.T) {
+	sockPath := filepath.Join(t.TempDir(), "test.sock")
+	hooks := []startHookEntry{
+		{Name: "oauth"},
+		{Name: "workers"},
+	}
+	writeHooksState(sockPath, hooks)
+
+	names := readHooksState(sockPath)
+	if len(names) != 2 || names[0] != "oauth" || names[1] != "workers" {
+		t.Errorf("expected [oauth, workers], got %v", names)
+	}
+
+	cleanHooksState(sockPath)
+	if names := readHooksState(sockPath); names != nil {
+		t.Errorf("expected nil after clean, got %v", names)
+	}
+}
+
+func TestHooksStatePath(t *testing.T) {
+	got := hooksStatePath("/tmp/gtl-abc123.sock")
+	if got != "/tmp/gtl-abc123.hooks" {
+		t.Errorf("expected /tmp/gtl-abc123.hooks, got %s", got)
+	}
+}
+
+func TestRunPostStopHooks_ReverseOrder(t *testing.T) {
+	dir := t.TempDir()
+	outFile := filepath.Join(dir, "order.txt")
+
+	yml := "project: test\nhooks:\n  first:\n    post_stop: echo first >> " + outFile + "\n  second:\n    post_stop: echo second >> " + outFile + "\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := config.LoadProjectConfig(dir)
+
+	sockPath := filepath.Join(dir, "test.sock")
+	hooks := []startHookEntry{
+		{Name: "first"},
+		{Name: "second"},
+	}
+	writeHooksState(sockPath, hooks)
+
+	runPostStopHooks(sockPath, pc, 3000, dir)
+
+	data, _ := os.ReadFile(outFile)
+	lines := strings.TrimSpace(string(data))
+	parts := strings.Split(lines, "\n")
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) != "second" || strings.TrimSpace(parts[1]) != "first" {
+		t.Errorf("expected reverse order [second, first], got: %q", lines)
+	}
+
+	// State file should be cleaned up
+	if names := readHooksState(sockPath); names != nil {
+		t.Errorf("expected state file cleaned, got %v", names)
 	}
 }
 

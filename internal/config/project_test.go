@@ -557,6 +557,100 @@ func TestProjectAliases_Empty(t *testing.T) {
 	}
 }
 
+func TestStartHooks(t *testing.T) {
+	dir := t.TempDir()
+	yml := `project: test
+hooks:
+  pre_setup:
+    - echo pre
+  oauth:
+    pre_start: gtl serve alias salt-oauth 3000
+    post_stop: gtl serve alias --remove salt-oauth
+  workers:
+    pre_start: bundle exec sidekiq
+`
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := LoadProjectConfig(dir)
+
+	hooks := pc.StartHooks()
+	if hooks == nil {
+		t.Fatal("expected start hooks, got nil")
+	}
+	if len(hooks) != 2 {
+		t.Errorf("expected 2 start hooks, got %d", len(hooks))
+	}
+	if hooks["oauth"].PreStart != "gtl serve alias salt-oauth 3000" {
+		t.Errorf("unexpected oauth pre_start: %s", hooks["oauth"].PreStart)
+	}
+	if hooks["oauth"].PostStop != "gtl serve alias --remove salt-oauth" {
+		t.Errorf("unexpected oauth post_stop: %s", hooks["oauth"].PostStop)
+	}
+	if hooks["workers"].PreStart != "bundle exec sidekiq" {
+		t.Errorf("unexpected workers pre_start: %s", hooks["workers"].PreStart)
+	}
+	if hooks["workers"].PostStop != "" {
+		t.Errorf("expected empty workers post_stop, got %s", hooks["workers"].PostStop)
+	}
+
+	// Legacy array hooks should NOT appear in StartHooks
+	if _, ok := hooks["pre_setup"]; ok {
+		t.Error("legacy pre_setup should not appear in StartHooks")
+	}
+}
+
+func TestStartHooks_Empty(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte("project: test\n"), 0o644)
+	pc := LoadProjectConfig(dir)
+	if hooks := pc.StartHooks(); hooks != nil {
+		t.Errorf("expected nil, got %v", hooks)
+	}
+}
+
+func TestStartHooks_OnlyLegacy(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: test\nhooks:\n  pre_setup:\n    - echo hi\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := LoadProjectConfig(dir)
+	if hooks := pc.StartHooks(); hooks != nil {
+		t.Errorf("expected nil when only legacy hooks, got %v", hooks)
+	}
+}
+
+func TestStartHooks_PreStartOnly(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: test\nhooks:\n  seed:\n    pre_start: bin/rails db:seed\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := LoadProjectConfig(dir)
+	hooks := pc.StartHooks()
+	if hooks == nil {
+		t.Fatal("expected hooks")
+	}
+	if hooks["seed"].PreStart != "bin/rails db:seed" {
+		t.Errorf("unexpected: %s", hooks["seed"].PreStart)
+	}
+	if hooks["seed"].PostStop != "" {
+		t.Error("expected empty post_stop")
+	}
+}
+
+func TestStartHooks_PostStopOnly(t *testing.T) {
+	dir := t.TempDir()
+	yml := "project: test\nhooks:\n  cleanup:\n    post_stop: echo done\n"
+	_ = os.WriteFile(filepath.Join(dir, ".treeline.yml"), []byte(yml), 0o644)
+	pc := LoadProjectConfig(dir)
+	hooks := pc.StartHooks()
+	if hooks == nil {
+		t.Fatal("expected hooks")
+	}
+	if hooks["cleanup"].PreStart != "" {
+		t.Error("expected empty pre_start")
+	}
+	if hooks["cleanup"].PostStop != "echo done" {
+		t.Errorf("unexpected: %s", hooks["cleanup"].PostStop)
+	}
+}
+
 func TestRewriteEnvFileBlock_PreservesRestOfFile(t *testing.T) {
 	input := "project: myapp\n\nenv_file:\n  target: .env.local\n  source: .env.local\n\ndatabase:\n  adapter: postgresql\n"
 	got := rewriteEnvFileToSimple(input, ".env.local")

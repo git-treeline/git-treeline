@@ -1,3 +1,7 @@
+## [0.36.0]
+
+- **Start hooks** — `.treeline.yml` now supports named hooks with `pre_start` and `post_stop` commands, activated via `gtl start --with <name>`. Hooks are for quick environment setup/teardown (registering aliases, seeding data, setting debug flags), not for managing long-running processes. `pre_start` hooks run before the supervisor launches and abort on failure. `post_stop` hooks run in reverse order when the supervisor exits (Ctrl+C). Hooks support `{port}` interpolation. Active hook names are persisted alongside the supervisor socket so post_stop cleanup survives the session. Hooks are not re-fired on `gtl restart` or resume — only on a fresh `gtl start`.
+
 ## [0.35.6]
 
 - **Fix pfctl reload on reinstall** — `gtl serve install` no longer fails with "pfctl reload failed: exit status 1" when pf is already enabled. The reload now separates `-f` (load rules) from `-e` (enable pf) so the "pf already enabled" exit code doesn't abort the install.
