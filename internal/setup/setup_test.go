@@ -12,6 +12,7 @@ import (
 
 	"github.com/git-treeline/git-treeline/internal/allocator"
 	"github.com/git-treeline/git-treeline/internal/config"
+	"github.com/git-treeline/git-treeline/internal/interpolation"
 	"github.com/git-treeline/git-treeline/internal/registry"
 )
 
@@ -572,6 +573,24 @@ env:
 		if strings.Contains(line, "==>") {
 			t.Errorf("subordinate detail line should not have ==> prefix: %q", line)
 		}
+	}
+}
+
+func TestInjectRouterURL(t *testing.T) {
+	alloc := interpolation.Allocation{"port": float64(3010)}
+	InjectRouterURL(alloc, "salt", "feature", "prt.dev")
+	got, _ := alloc["router_url"].(string)
+	if got != "https://salt-feature.prt.dev" {
+		t.Errorf("expected https://salt-feature.prt.dev, got %q", got)
+	}
+}
+
+func TestInjectRouterURL_EmptyBranch(t *testing.T) {
+	alloc := interpolation.Allocation{"port": float64(3010)}
+	InjectRouterURL(alloc, "salt", "", "localhost")
+	got, _ := alloc["router_url"].(string)
+	if got != "https://salt.localhost" {
+		t.Errorf("expected https://salt.localhost, got %q", got)
 	}
 }
 

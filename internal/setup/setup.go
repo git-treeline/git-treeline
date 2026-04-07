@@ -235,10 +235,19 @@ func (s *Setup) copyFiles() {
 }
 
 func (s *Setup) buildEnvVars(alloc interpolation.Allocation, redisURL string) (map[string]string, error) {
+	branch, _ := alloc["branch"].(string)
+	InjectRouterURL(alloc, s.ProjectConfig.Project(), branch, s.UserConfig.RouterDomain())
 	if s.Resolver != nil {
 		return BuildEnvVarsWithResolver(s.ProjectConfig, alloc, redisURL, s.Resolver)
 	}
 	return BuildEnvVars(s.ProjectConfig, alloc, redisURL), nil
+}
+
+// InjectRouterURL adds the computed router_url to an allocation map so the
+// {router_url} env token can be resolved by the interpolation engine.
+func InjectRouterURL(alloc interpolation.Allocation, project, branch, routerDomain string) {
+	routeKey := proxy.RouteKey(project, branch)
+	alloc["router_url"] = fmt.Sprintf("https://%s.%s", routeKey, routerDomain)
 }
 
 // BuildEnvVars resolves the env template from a project config against an
@@ -287,6 +296,8 @@ func RegenerateEnvFile(worktreePath string, uc *config.UserConfig) error {
 
 	// Get branch for resolver
 	branch, _ := allocMap["branch"].(string)
+
+	InjectRouterURL(interpAlloc, pc.Project(), branch, uc.RouterDomain())
 
 	redisURL := interpolation.BuildRedisURL(uc.RedisURL(), interpAlloc)
 

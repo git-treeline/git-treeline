@@ -1,3 +1,7 @@
+## [0.35.2]
+
+- **`{router_url}` env token** — the `env:` block in `.treeline.yml` now supports `{router_url}`, which resolves to the full HTTPS router URL (e.g. `https://salt-feature.prt.dev`). Previously this token only worked in `editor.title`.
+
 ## [0.35.1]
 
 - **Fix pfctl anchor install ordering** — `gtl serve install` wrote the pf anchor file *after* the `pfctl -n` dry-run validation, so the dry-run failed with "No such file or directory" and the entire install was skipped. The anchor is now written before validation.

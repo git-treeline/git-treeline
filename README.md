@@ -515,7 +515,7 @@ env:
   DATABASE_NAME: "{database}"
   REDIS_URL: "{redis_url}"
   ESBUILD_PORT: "{port_2}"
-  APPLICATION_HOST: "localhost:{port}"
+  APPLICATION_HOST: "{router_url}"
 
 commands:
   setup:
@@ -659,6 +659,7 @@ Available in `env` values:
 | `{redis_prefix}` | Redis key prefix (if using prefixed strategy) |
 | `{project}` | Project name |
 | `{worktree}` | Worktree name |
+| `{router_url}` | HTTPS router URL (e.g. `https://salt-feature.prt.dev`) |
 | `{resolve:project}` | URL of another project's allocation (same-branch default, checks link overrides) |
 | `{resolve:project/branch}` | URL of another project's allocation on a specific branch |
 

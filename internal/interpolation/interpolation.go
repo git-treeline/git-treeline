@@ -1,7 +1,7 @@
 // Package interpolation provides template variable substitution for
 // environment files and configuration values. Supported tokens include
-// {port}, {database}, {redis_url}, {redis_prefix}, {project}, and
-// numbered ports like {port_1}, {port_2}.
+// {port}, {database}, {redis_url}, {redis_prefix}, {project},
+// {router_url}, and numbered ports like {port_1}, {port_2}.
 package interpolation
 
 import (
@@ -80,6 +80,7 @@ func buildTokenMap(allocation Allocation, redisURL, project string) map[string]s
 		"{redis_prefix}": getString(allocation, "redis_prefix"),
 		"{project}":      project,
 		"{worktree}":     getString(allocation, "worktree_name"),
+		"{router_url}":   getString(allocation, "router_url"),
 	}
 
 	if ports, ok := allocation["ports"].([]any); ok {

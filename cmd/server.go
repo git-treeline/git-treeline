@@ -244,18 +244,18 @@ func resolveEnvVars(pc *config.ProjectConfig, absPath string) map[string]string 
 	if alloc == nil {
 		return nil
 	}
-	redisURL := interpolation.BuildRedisURL(
-		config.LoadUserConfig("").RedisURL(),
-		interpolation.Allocation(alloc),
-	)
+	uc := config.LoadUserConfig("")
+	interpAlloc := interpolation.Allocation(alloc)
 	branch := worktree.CurrentBranch(absPath)
+	setup.InjectRouterURL(interpAlloc, pc.Project(), branch, uc.RouterDomain())
+	redisURL := interpolation.BuildRedisURL(uc.RedisURL(), interpAlloc)
 	r := resolve.New(reg, absPath, branch)
-	result, err := setup.BuildEnvVarsWithResolver(pc, interpolation.Allocation(alloc), redisURL, r.Resolve)
+	result, err := setup.BuildEnvVarsWithResolver(pc, interpAlloc, redisURL, r.Resolve)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", err)
 		fmt.Fprintf(os.Stderr, "  {resolve:...} tokens will not be expanded in process env.\n")
 		fmt.Fprintf(os.Stderr, "  Your app should read from the env file (written correctly by gtl setup).\n")
-		return setup.BuildEnvVars(pc, interpolation.Allocation(alloc), redisURL)
+		return setup.BuildEnvVars(pc, interpAlloc, redisURL)
 	}
 	return result
 }

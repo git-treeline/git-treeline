@@ -134,6 +134,25 @@ func TestInterpolateWithResolver(t *testing.T) {
 	}
 }
 
+func TestInterpolate_RouterURL(t *testing.T) {
+	alloc := Allocation{
+		"port":       float64(3010),
+		"router_url": "https://salt-feature.prt.dev",
+	}
+	result := Interpolate("{router_url}", alloc, "", "salt")
+	if result != "https://salt-feature.prt.dev" {
+		t.Errorf("expected https://salt-feature.prt.dev, got %s", result)
+	}
+}
+
+func TestInterpolate_RouterURL_Missing(t *testing.T) {
+	alloc := Allocation{"port": float64(3010)}
+	result := Interpolate("{router_url}", alloc, "", "salt")
+	if result != "" {
+		t.Errorf("expected empty string for missing router_url, got %q", result)
+	}
+}
+
 func TestInterpolateWithResolver_NilResolver(t *testing.T) {
 	alloc := Allocation{"port": 3000}
 	result, err := InterpolateWithResolver("{resolve:api}", alloc, "redis://localhost:6379", "test", nil)
