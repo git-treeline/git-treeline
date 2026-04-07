@@ -120,10 +120,10 @@ func installDarwinPortForward(routerPort int) error {
 	_ = tmpPfConf.Close()
 
 	script := fmt.Sprintf(
-		"/sbin/pfctl -n -f '%s' 2>&1 || exit 1; /bin/cp '%s' '%s' && /bin/mkdir -p /etc/pf.anchors && /bin/cp '%s' '%s' && /bin/cp '%s' '%s' && /sbin/pfctl -ef '%s' 2>/dev/null; true",
+		"/bin/mkdir -p /etc/pf.anchors && /bin/cp '%s' '%s' && /sbin/pfctl -n -f '%s' 2>&1 || exit 1; /bin/cp '%s' '%s' && /bin/cp '%s' '%s' && /sbin/pfctl -ef '%s' 2>/dev/null; true",
+		tmpAnchor.Name(), pfAnchorPath(),
 		tmpPfConf.Name(),
 		pfConfPath, pfBackupPath,
-		tmpAnchor.Name(), pfAnchorPath(),
 		tmpPfConf.Name(), pfConfPath,
 		pfConfPath,
 	)

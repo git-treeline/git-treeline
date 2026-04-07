@@ -1,3 +1,7 @@
+## [0.35.1]
+
+- **Fix pfctl anchor install ordering** — `gtl serve install` wrote the pf anchor file *after* the `pfctl -n` dry-run validation, so the dry-run failed with "No such file or directory" and the entire install was skipped. The anchor is now written before validation.
+
 ## [0.35.0]
 
 - **Complete worktree config loading** — all commands now load `.treeline.yml` from the worktree you're in: `gtl open`, `gtl tunnel`, `gtl db`, `gtl release`, `gtl refresh`, plus `--start` in `gtl new`/`gtl review`. Branch-specific config overrides work everywhere. Commands that create worktrees (`gtl new`, `gtl review`) read from the main repo before creation, then switch to the new worktree's config for setup and `--start`.
