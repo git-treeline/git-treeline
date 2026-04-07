@@ -142,13 +142,17 @@ func installDarwinPortForward(routerPort int) error {
 	return nil
 }
 
-// reloadPf ensures the kernel's pf rules match /etc/pf.conf. The config
-// file can have rules that the kernel doesn't — e.g. after a failed
-// uninstall or if pfctl was never invoked after writing.
+// reloadPf ensures the kernel's pf rules match /etc/pf.conf. The reload
+// uses -f (load rules) separately from -e (enable pf) because pfctl
+// returns exit 1 from -e when pf is already running.
 func reloadPf() error {
+	script := fmt.Sprintf(
+		"/sbin/pfctl -f '%s' 2>/dev/null && { /sbin/pfctl -e 2>/dev/null; true; }",
+		pfConfPath,
+	)
 	cmd := exec.Command("sudo", "-p",
 		"\nEnter your password to reload port forwarding: ",
-		"/sbin/pfctl", "-ef", pfConfPath)
+		"sh", "-c", script)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

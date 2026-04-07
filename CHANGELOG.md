@@ -1,3 +1,7 @@
+## [0.35.6]
+
+- **Fix pfctl reload on reinstall** — `gtl serve install` no longer fails with "pfctl reload failed: exit status 1" when pf is already enabled. The reload now separates `-f` (load rules) from `-e` (enable pf) so the "pf already enabled" exit code doesn't abort the install.
+
 ## [0.35.5]
 
 - **Router version mismatch warning** — after upgrading the CLI, `gtl serve status` and `gtl start` now warn if the running router is an older version and prompt to run `gtl serve install`. The router records its version on startup; the CLI compares on each invocation.
