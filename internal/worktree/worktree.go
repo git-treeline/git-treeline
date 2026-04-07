@@ -285,7 +285,6 @@ func UnpushedCommitCount(worktreePath string) int {
 		return 0
 	}
 
-	// Check if remote tracking branch exists
 	remote := gitOutput(worktreePath, "rev-parse", "--verify", "--quiet", "origin/"+branch)
 	if remote == "" {
 		// No remote branch — all local commits are "unpushed"
@@ -300,7 +299,6 @@ func UnpushedCommitCount(worktreePath string) int {
 		return count
 	}
 
-	// Count commits ahead of remote
 	out := gitOutput(worktreePath, "rev-list", "--count", "origin/"+branch+"..HEAD")
 	if out == "" {
 		return 0

@@ -92,7 +92,6 @@ func runReleaseSingle(args []string) error {
 	}
 	fmt.Println(line)
 
-	// Warn about unpushed commits
 	unpushed := worktree.UnpushedCommitCount(absPath)
 	if unpushed > 0 {
 		branch := worktree.CurrentBranch(absPath)
@@ -264,7 +263,6 @@ func removeWorktreeDir(absPath string, force bool) {
 		return
 	}
 
-	// Check if we're inside the worktree being removed
 	cwd, _ := os.Getwd()
 	cwdAbs, _ := filepath.Abs(cwd)
 	insideWorktree := cwdAbs == absPath || strings.HasPrefix(cwdAbs+string(os.PathSeparator), absPath+string(os.PathSeparator))

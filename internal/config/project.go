@@ -383,15 +383,12 @@ func (pc *ProjectConfig) migrateCommands() {
 	}
 	content := string(raw)
 
-	// Rewrite setup_commands block → commands.setup
 	if hasSetup {
 		content = rewriteSetupCommands(content)
 	}
-	// Rewrite start_command → commands.start (inline)
 	if hasStart {
 		if s, ok := startCmd.(string); ok && s != "" {
 			content = strings.Replace(content, "start_command: "+s, "", 1)
-			// Clean up blank lines left behind
 			content = strings.ReplaceAll(content, "\n\n\n", "\n\n")
 		}
 	}
@@ -421,17 +418,14 @@ func rewriteSetupCommands(content string) string {
 	}
 
 	if len(setupItems) > 0 {
-		// Find where to insert — after env block or at end
 		out = appendCommandsBlock(out, "setup", setupItems)
 	}
 	return strings.Join(out, "\n")
 }
 
 func appendCommandsBlock(lines []string, key string, items []string) []string {
-	// Look for existing commands: block
 	for i, line := range lines {
 		if line == "commands:" {
-			// Insert items under commands:
 			insert := []string{"  " + key + ":"}
 			for _, item := range items {
 				insert = append(insert, "  "+item)
@@ -443,7 +437,6 @@ func appendCommandsBlock(lines []string, key string, items []string) []string {
 			return result
 		}
 	}
-	// No commands block — create one
 	result := append(lines, "", "commands:", "  "+key+":")
 	for _, item := range items {
 		result = append(result, "  "+item)

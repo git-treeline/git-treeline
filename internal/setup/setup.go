@@ -292,10 +292,7 @@ func RegenerateEnvFile(worktreePath string, uc *config.UserConfig) error {
 		return nil
 	}
 
-	// Convert registry map to interpolation.Allocation for env var building
 	interpAlloc := interpolation.Allocation(allocMap)
-
-	// Get branch for resolver
 	branch, _ := allocMap["branch"].(string)
 
 	InjectRouterTokens(interpAlloc, pc.Project(), branch, uc.RouterDomain())

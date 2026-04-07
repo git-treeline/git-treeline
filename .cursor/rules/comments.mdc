@@ -1,0 +1,25 @@
+---
+description: Code comment standards for Go source files
+alwaysApply: true
+---
+
+# Comments
+
+Only add comments that explain **why**, not **what**. The code should speak for itself.
+
+## Do not write
+
+- Comments that restate the next line (`// Check if nil`, `// Return the result`, `// Get the branch`)
+- Comments that narrate control flow (`// Loop through items`, `// Handle error`)
+- Comments that label obvious variable assignments (`// Create the map`)
+
+## Do write
+
+- Doc comments on exported types and functions (required by Go convention)
+- Non-obvious intent, trade-offs, or constraints the code can't convey
+- Section labels in complex multi-branch logic (e.g. XML/YAML manipulation with 3+ branches)
+- Magic numbers or offsets that need explanation
+
+## Test files
+
+Test comments describing setup steps or scenario intent within a large test function are acceptable — they help navigate long test bodies.

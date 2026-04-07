@@ -177,7 +177,6 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 			}
 		}
 
-		// Check if we have credentials for this domain
 		certPath := tunnel.CertPathForDomain(domain)
 		if !tunnel.IsLoggedInForDomain(domain) {
 			// Try with default cert first
@@ -208,15 +207,13 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 					return fmt.Errorf("login failed: %w", err)
 				}
 
-				// Retry DNS routing with domain-specific cert
-				certPath = tunnel.CertPathForDomain(domain)
+			certPath = tunnel.CertPathForDomain(domain)
 				fmt.Println(style.Actionf("Routing %s → tunnel %q", wildcardHost, tunnelName))
 				if err := tunnel.RouteDNSWithCert(tunnelName, wildcardHost, certPath); err != nil {
 					return printDNSManualInstructions(tunnelName, domain, err)
 				}
 
-				// Verify again
-				if !tunnel.VerifyDNS(testHost, 10*time.Second) {
+			if !tunnel.VerifyDNS(testHost, 10*time.Second) {
 					return printDNSManualInstructions(tunnelName, domain, nil)
 				}
 			} else {
@@ -224,7 +221,6 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 			}
 		}
 
-		// Save the domain-specific cert path in config if we have one
 		if certPath != "" {
 			uc.Set("tunnel.tunnels."+tunnelName+".cert", certPath)
 		}

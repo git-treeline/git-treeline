@@ -67,13 +67,11 @@ Otherwise a new branch is created from --base (or the current branch).`,
 				fmt.Println()
 				fmt.Println("This project doesn't have a .treeline.yml yet.")
 				if confirm.Prompt("Set up port allocation and server management?", true, nil) {
-					fmt.Println()
-					// Run init to create config, then continue with normal flow
-					if err := runInitInteractive(mainRepo, det); err != nil {
-						return err
-					}
-					// Reload config after init
-					pc = config.LoadProjectConfig(mainRepo)
+				fmt.Println()
+				if err := runInitInteractive(mainRepo, det); err != nil {
+					return err
+				}
+				pc = config.LoadProjectConfig(mainRepo)
 				} else {
 					// User declined — create worktree only, no allocation
 					return createWorktreeOnly(mainRepo, branch, uc, pc)
@@ -274,7 +272,6 @@ func createWorktreeOnly(mainRepo, branch string, uc *config.UserConfig, pc *conf
 		wtPath = filepath.Join(filepath.Dir(mainRepo), fmt.Sprintf("%s-%s", projectName, branch))
 	}
 
-	// Check if branch is already in a worktree
 	if existingWT := worktree.FindWorktreeForBranch(branch); existingWT != "" {
 		fmt.Println(style.Actionf("Branch '%s' already checked out at %s", branch, existingWT))
 		fmt.Println()
@@ -332,6 +329,5 @@ func createWorktreeOnly(mainRepo, branch string, uc *config.UserConfig, pc *conf
 // runInitInteractive runs the init flow to create .treeline.yml.
 // This is a simplified version that just creates the config file.
 func runInitInteractive(mainRepo string, det *detect.Result) error {
-	// Delegate to the init command's logic
 	return runInitForNew(mainRepo, det)
 }

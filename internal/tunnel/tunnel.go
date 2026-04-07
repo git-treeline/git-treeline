@@ -41,7 +41,6 @@ func RunQuick(port int) error {
 		return fmt.Errorf("failed to start cloudflared: %w", err)
 	}
 
-	// Scan cloudflared stderr for the tunnel URL and print it cleanly.
 	go func() {
 		scanner := bufio.NewScanner(stderrPipe)
 		urlPrinted := false
@@ -247,7 +246,6 @@ func LoginForDomain(domain string) error {
 
 	defaultCertPath := filepath.Join(ConfigDir(), "cert.pem")
 
-	// Backup existing cert.pem if present
 	var backupPath string
 	if _, err := os.Stat(defaultCertPath); err == nil {
 		backupPath = defaultCertPath + ".backup"
@@ -256,7 +254,6 @@ func LoginForDomain(domain string) error {
 		}
 	}
 
-	// Run login - this creates a new cert.pem
 	cmd := exec.Command(cfPath, "tunnel", "login")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -269,13 +266,11 @@ func LoginForDomain(domain string) error {
 		return err
 	}
 
-	// Move new cert.pem to domain-specific location
 	domainCertPath := CertPathForDomain(domain)
 	if err := os.Rename(defaultCertPath, domainCertPath); err != nil {
 		return fmt.Errorf("failed to save domain cert: %w", err)
 	}
 
-	// Restore the backup
 	if backupPath != "" {
 		_ = os.Rename(backupPath, defaultCertPath)
 	}
@@ -297,7 +292,6 @@ func ParseCertZoneID(certPath string) (string, error) {
 		return "", err
 	}
 
-	// Extract the base64 content between BEGIN/END markers
 	content := string(data)
 	start := strings.Index(content, "-----BEGIN ARGO TUNNEL TOKEN-----")
 	end := strings.Index(content, "-----END ARGO TUNNEL TOKEN-----")

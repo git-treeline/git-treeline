@@ -113,14 +113,13 @@ func (r *Result) detectDatabase(root string) {
 }
 
 func (r *Result) detectRedis(root string) {
-	// Check Gemfile for redis
 	if content, err := os.ReadFile(filepath.Join(root, "Gemfile")); err == nil {
 		if strings.Contains(string(content), "redis") {
 			r.HasRedis = true
 			return
 		}
 	}
-	// Check package.json for redis/ioredis
+
 	if content, err := os.ReadFile(filepath.Join(root, "package.json")); err == nil {
 		s := string(content)
 		if strings.Contains(s, "\"redis\"") || strings.Contains(s, "\"ioredis\"") {

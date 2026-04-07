@@ -355,15 +355,12 @@ func warnPortWiring(startCommand, worktreePath string) {
 func resolveStartHooks(pc *config.ProjectConfig, withFlag string) ([]startHookEntry, error) {
 	allHooks := pc.StartHooks()
 
-	// Collect auto hooks
 	var result []startHookEntry
 	seen := map[string]bool{}
-	if allHooks != nil {
-		for name, h := range allHooks {
-			if h.Auto {
-				result = append(result, startHookEntry{Name: name, Hook: h})
-				seen[name] = true
-			}
+	for name, h := range allHooks {
+		if h.Auto {
+			result = append(result, startHookEntry{Name: name, Hook: h})
+			seen[name] = true
 		}
 	}
 
