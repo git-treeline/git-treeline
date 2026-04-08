@@ -131,11 +131,11 @@ func filterLineTo(stdout, stderr io.Writer, line string) {
 		strings.Contains(line, "WRN"),
 		strings.Contains(line, "failed"),
 		strings.Contains(line, "error"):
-		fmt.Fprintln(stderr, line)
+		_, _ = fmt.Fprintln(stderr, line)
 	case requestMethodRe.MatchString(line):
-		fmt.Fprintln(stdout, line)
+		_, _ = fmt.Fprintln(stdout, line)
 	case strings.Contains(line, "INF") && strings.Contains(line, "Registered"):
-		fmt.Fprintln(stdout, line)
+		_, _ = fmt.Fprintln(stdout, line)
 	}
 }
 
