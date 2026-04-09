@@ -56,10 +56,10 @@ Useful for scripting:
 		}
 
 		if len(matches) == 0 {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("No worktree found for branch %q", query),
 				Hint:    "Run 'gtl status' to see all worktrees.",
-			}
+			})
 		}
 
 		if len(matches) > 1 {
@@ -69,18 +69,18 @@ Useful for scripting:
 					projects = append(projects, p)
 				}
 			}
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Branch %q exists in multiple projects: %s", branch, strings.Join(projects, ", ")),
 				Hint:    fmt.Sprintf("Specify project: gtl where %s/%s", projects[0], branch),
-			}
+			})
 		}
 
 		worktree, _ := matches[0]["worktree"].(string)
 		if worktree == "" {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Allocation for branch %q has no worktree path", query),
 				Hint:    "The registry may be corrupted. Run 'gtl prune --stale' to clean up.",
-			}
+			})
 		}
 		fmt.Println(worktree)
 		return nil

@@ -94,10 +94,10 @@ in .treeline.yml. Use --from to clone from a different database instead.`,
 			source = dbResetFrom
 		}
 		if source == "" {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: "No template database configured and no --from specified.",
 				Hint:    "Set 'database.template' in .treeline.yml, or pass --from <db_name>.",
-			}
+			})
 		}
 
 		fmt.Printf("==> Dropping %s\n", info.target)
@@ -124,10 +124,10 @@ pg_dump file. Supports both custom format and plain SQL dumps.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dumpFile := args[0]
 		if _, err := os.Stat(dumpFile); err != nil {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Dump file not found: %s", dumpFile),
 				Hint:    "Check the path — expected a pg_dump output file (custom or plain SQL).",
-			}
+			})
 		}
 
 		info, err := resolveDB()

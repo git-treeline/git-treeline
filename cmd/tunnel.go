@@ -69,13 +69,13 @@ Related commands:
 		if domain != "" {
 			tunnelName := uc.TunnelName(tunnelConfigName)
 			if tunnelName == "" {
-				return &CliError{
-				Message: "Tunnel domain is configured but no tunnel name found.",
-				Hint:    "Run 'gtl tunnel setup' to complete configuration.",
-			}
+				return cliErr(cmd, &CliError{
+					Message: "Tunnel domain is configured but no tunnel name found.",
+					Hint:    "Run 'gtl tunnel setup' to complete configuration.",
+				})
 			}
 			if err := validateTunnelPrereqs(tunnelName); err != nil {
-				return err
+				return cliErr(cmd, err)
 			}
 
 			project, branch := resolveProjectAndBranch(entry)
@@ -111,22 +111,22 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 
 		if _, err := tunnel.ResolveCloudflared(); err != nil {
 			if !confirm.Prompt("cloudflared not found. Install it?", false, nil) {
-				return &CliError{
+				return cliErr(cmd, &CliError{
 					Message: "cloudflared is required for tunnel setup.",
 					Hint:    "Install it with 'brew install cloudflare/cloudflare/cloudflared' or see https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
-				}
+				})
 			}
 			if !tunnel.OfferInstall() {
-				return &CliError{
+				return cliErr(cmd, &CliError{
 					Message: "cloudflared still not found after install attempt.",
 					Hint:    "Install manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
-				}
+				})
 			}
 			if _, err := tunnel.ResolveCloudflared(); err != nil {
-				return &CliError{
+				return cliErr(cmd, &CliError{
 					Message: "cloudflared still not found after install attempt.",
 					Hint:    "Install manually: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/",
-				}
+				})
 			}
 		}
 
@@ -149,10 +149,10 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 		tunnelName = confirm.Input("Tunnel identifier", tunnelName, nil)
 		tunnelName = strings.TrimSpace(tunnelName)
 		if tunnelName == "" || strings.ContainsAny(tunnelName, " \t\n/\\:.") {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Invalid tunnel name %q.", tunnelName),
 				Hint:    "Use only letters, numbers, and hyphens (this is an identifier, not your domain).",
-			}
+			})
 		}
 
 		if !tunnel.TunnelExists(tunnelName) {
@@ -165,16 +165,16 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 		existingDomain := uc.TunnelDomain("")
 		domain := strings.TrimSpace(confirm.Input("Domain (e.g. myteam.dev)", existingDomain, nil))
 		if domain == "" {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: "Domain is required for named tunnel setup.",
 				Hint:    "Enter the domain you manage in Cloudflare, e.g. myteam.dev",
-			}
+			})
 		}
 		if strings.ContainsAny(domain, " \t\n/:") || !strings.Contains(domain, ".") {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Invalid domain %q.", domain),
 				Hint:    "Expected a bare domain like myteam.dev (no protocol, path, or port).",
-			}
+			})
 		}
 
 		certPath := tunnel.CertPathForDomain(domain)
@@ -186,7 +186,7 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 		wildcardHost := "*." + domain
 		fmt.Println(style.Actionf("Routing %s → tunnel %q", wildcardHost, tunnelName))
 		if err := tunnel.RouteDNSWithCert(tunnelName, wildcardHost, certPath); err != nil {
-			return printDNSManualInstructions(tunnelName, domain, err)
+			return cliErr(cmd, printDNSManualInstructions(tunnelName, domain, err))
 		}
 
 		// Verify DNS was created in the correct zone
@@ -210,14 +210,14 @@ account that owns that zone. gtl stores per-domain credentials automatically.`,
 			certPath = tunnel.CertPathForDomain(domain)
 				fmt.Println(style.Actionf("Routing %s → tunnel %q", wildcardHost, tunnelName))
 				if err := tunnel.RouteDNSWithCert(tunnelName, wildcardHost, certPath); err != nil {
-					return printDNSManualInstructions(tunnelName, domain, err)
+					return cliErr(cmd, printDNSManualInstructions(tunnelName, domain, err))
 				}
 
 			if !tunnel.VerifyDNS(testHost, 10*time.Second) {
-					return printDNSManualInstructions(tunnelName, domain, nil)
+					return cliErr(cmd, printDNSManualInstructions(tunnelName, domain, nil))
 				}
 			} else {
-				return printDNSManualInstructions(tunnelName, domain, nil)
+				return cliErr(cmd, printDNSManualInstructions(tunnelName, domain, nil))
 			}
 		}
 
@@ -352,10 +352,10 @@ With an argument, sets the default to the named tunnel config.
 		name := args[0]
 		configs := uc.TunnelConfigs()
 		if _, ok := configs[name]; !ok {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Tunnel %q not found in config.", name),
 				Hint:    fmt.Sprintf("Available tunnels: %v", tunnelConfigNames(configs)),
-			}
+			})
 		}
 		uc.Set("tunnel.default", name)
 		if err := uc.Save(); err != nil {
@@ -382,10 +382,10 @@ tunnels (random *.trycloudflare.com URLs).`,
 
 		configs := uc.TunnelConfigs()
 		if _, ok := configs[name]; !ok {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Tunnel %q not found in config.", name),
 				Hint:    fmt.Sprintf("Available tunnels: %v", tunnelConfigNames(configs)),
-			}
+			})
 		}
 
 		wasDefault := uc.TunnelDefault() == name

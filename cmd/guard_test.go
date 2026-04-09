@@ -135,6 +135,71 @@ func TestGuard_NoOsExitInCmdRunE(t *testing.T) {
 	}
 }
 
+// TestGuard_CliErrorUsesCliErr ensures all CliError returns in RunE functions
+// use cliErr() to suppress usage output for domain errors.
+func TestGuard_CliErrorUsesCliErr(t *testing.T) {
+	violations := scanGoFiles(t, ".", func(fset *token.FileSet, f *ast.File, path string) []string {
+		base := filepath.Base(path)
+		if strings.HasSuffix(base, "_test.go") || base == "error.go" {
+			return nil
+		}
+
+		var hits []string
+
+		ast.Inspect(f, func(n ast.Node) bool {
+			// Look for RunE function literals in cobra.Command definitions
+			if kv, ok := n.(*ast.KeyValueExpr); ok {
+				if ident, ok := kv.Key.(*ast.Ident); ok && ident.Name == "RunE" {
+					ast.Inspect(kv.Value, func(inner ast.Node) bool {
+						if ret, ok := inner.(*ast.ReturnStmt); ok {
+							for _, result := range ret.Results {
+								if isBareCLIError(result) {
+									pos := fset.Position(ret.Pos())
+									hits = append(hits, pos.String())
+								}
+							}
+						}
+						return true
+					})
+					return false
+				}
+			}
+			return true
+		})
+		return hits
+	})
+
+	if len(violations) > 0 {
+		t.Errorf("Bare CliError returns found in RunE (use cliErr(cmd, ...) to suppress usage):\n  %s",
+			strings.Join(violations, "\n  "))
+	}
+}
+
+// isBareCLIError returns true if the expression is a direct &CliError{} or
+// errXxx() call that's not wrapped in cliErr().
+func isBareCLIError(expr ast.Expr) bool {
+	// Check for &CliError{...}
+	if unary, ok := expr.(*ast.UnaryExpr); ok {
+		if comp, ok := unary.X.(*ast.CompositeLit); ok {
+			if ident, ok := comp.Type.(*ast.Ident); ok && ident.Name == "CliError" {
+				return true
+			}
+		}
+	}
+
+	// Check for errXxx() calls that aren't wrapped in cliErr()
+	if call, ok := expr.(*ast.CallExpr); ok {
+		if ident, ok := call.Fun.(*ast.Ident); ok {
+			// errXxx constructors should be wrapped
+			if strings.HasPrefix(ident.Name, "err") && ident.Name != "err" {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 type inspectFunc func(fset *token.FileSet, f *ast.File, path string) []string
 
 func scanGoFiles(t *testing.T, dir string, fn inspectFunc) []string {

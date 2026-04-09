@@ -36,19 +36,19 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := worktreeGuard(cmd, args); err != nil {
-			return err
+			return cliErr(cmd, err)
 		}
 
 		if err := requireServeInstalled(); err != nil {
-			return err
+			return cliErr(cmd, err)
 		}
 
 		prNumber, err := strconv.Atoi(args[0])
 		if err != nil {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Invalid PR number: %s", args[0]),
 				Hint:    "Pass the numeric PR number, e.g. 'gtl review 42'.",
-			}
+			})
 		}
 
 		fmt.Printf("==> Looking up PR #%d...\n", prNumber)
@@ -92,7 +92,7 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 				fmt.Println("==> No allocation found — running setup...")
 				s := setup.New(existing, mainRepo, uc)
 				if _, err := s.Run(); err != nil {
-					return errSetupFailed(err)
+					return cliErr(cmd, errSetupFailed(err))
 				}
 				reg = registry.New("")
 				alloc = reg.Find(existing)
@@ -128,7 +128,7 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 
 		fmt.Printf("==> Fetching origin/%s...\n", branch)
 		if err := worktree.Fetch("origin", branch); err != nil {
-			return errBranchNotFound(branch)
+			return cliErr(cmd, errBranchNotFound(branch))
 		}
 
 		fmt.Printf("==> Creating worktree at %s\n", wtPath)
@@ -140,7 +140,7 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 		s := setup.New(wtPath, mainRepo, uc)
 		alloc, err := s.Run()
 		if err != nil {
-			return errSetupFailed(err)
+			return cliErr(cmd, errSetupFailed(err))
 		}
 
 		if alloc != nil {

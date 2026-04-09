@@ -42,13 +42,13 @@ Examples:
 		reg := registry.New("")
 		entry := reg.Find(absPath)
 		if entry == nil {
-			return errNoAllocation(absPath)
+			return cliErr(cmd, errNoAllocation(absPath))
 		}
 
 		fa := format.Allocation(entry)
 		ports := format.GetPorts(fa)
 		if len(ports) == 0 {
-			return errNoAllocationNoPorts(absPath)
+			return cliErr(cmd, errNoAllocationNoPorts(absPath))
 		}
 
 		pc := config.LoadProjectConfig(absPath)

@@ -33,7 +33,7 @@ Example:
 		reg := registry.New("")
 		entry := reg.Find(absPath)
 		if entry == nil {
-			return errNoAllocation(absPath)
+			return cliErr(cmd, errNoAllocation(absPath))
 		}
 
 		wt, _ := entry["worktree"].(string)

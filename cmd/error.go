@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/git-treeline/git-treeline/internal/style"
+	"github.com/spf13/cobra"
 )
 
 // CliError is a user-facing error with optional remediation hint and docs link.
@@ -18,6 +19,17 @@ type CliError struct {
 
 func (e *CliError) Error() string {
 	return e.Message
+}
+
+// cliErr marks the command to suppress usage output and returns the error.
+// Use this for domain/state errors where the user invoked the command correctly
+// but something in the environment prevents success. Cobra's default usage
+// display remains active for invocation errors (wrong args, invalid flags).
+func cliErr(cmd *cobra.Command, err error) error {
+	if err != nil {
+		cmd.SilenceUsage = true
+	}
+	return err
 }
 
 // formatCliError writes a structured error to stderr. Regular errors get a

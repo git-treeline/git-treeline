@@ -59,7 +59,7 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 
 		startCommand := pc.StartCommand()
 		if startCommand == "" {
-			return errNoStartCommand()
+			return cliErr(cmd, errNoStartCommand())
 		}
 
 		warnPortWiring(startCommand, absPath)
@@ -87,28 +87,28 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 				if startAwait {
 					return awaitReady(sockPath)
 				}
-				return errServerAlreadyRunning()
+				return cliErr(cmd, errServerAlreadyRunning())
 			}
 			resp, err = supervisor.Send(sockPath, "start")
 			if err != nil {
 				return err
 			}
 			if strings.HasPrefix(resp, "error") {
-				return &CliError{
+				return cliErr(cmd, &CliError{
 					Message: fmt.Sprintf("Server error: %s", resp),
 					Hint:    "Check the server logs, or run 'gtl stop' and try again.",
-				}
+				})
 			}
 			fmt.Println("Server resumed.")
 			if startAwait {
-				return awaitReady(sockPath)
+				return cliErr(cmd, awaitReady(sockPath))
 			}
 			return nil
 		}
 
 		// Fresh start path — run pre_start hooks
 		if err := runPreStartHooks(activeHooks, port, absPath); err != nil {
-			return err
+			return cliErr(cmd, err)
 		}
 		if len(activeHooks) > 0 {
 			writeHooksState(sockPath, activeHooks)
@@ -132,10 +132,10 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 			for i := 0; i < 50; i++ {
 				select {
 				case err := <-svErr:
-					return &CliError{
+					return cliErr(cmd, &CliError{
 						Message: fmt.Sprintf("Supervisor exited before ready: %s", err),
 						Hint:    "Check commands.start in .treeline.yml — the process crashed on startup.",
-					}
+					})
 				default:
 				}
 				time.Sleep(100 * time.Millisecond)
@@ -146,15 +146,15 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 
 			select {
 			case err := <-svErr:
-				return &CliError{
+				return cliErr(cmd, &CliError{
 					Message: fmt.Sprintf("Supervisor exited before ready: %s", err),
 					Hint:    "Check commands.start in .treeline.yml — the process crashed on startup.",
-				}
+				})
 			default:
 			}
 
 			if err := awaitReady(sockPath); err != nil {
-				return err
+				return cliErr(cmd, err)
 			}
 			return nil
 		}
@@ -193,10 +193,10 @@ supervisor entirely.`,
 			return err
 		}
 		if strings.HasPrefix(resp, "error") {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Server error: %s", resp),
 				Hint:    "The supervisor may be in an unexpected state. Check 'gtl start' output.",
-			}
+			})
 		}
 
 		if stopKill {
@@ -240,16 +240,16 @@ var restartCmd = &cobra.Command{
 
 		resp, err := supervisor.Send(sockPath, "restart")
 		if err != nil {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Could not reach supervisor: %s", err),
 				Hint:    "Is 'gtl start' running? Start the server first, then use 'gtl restart'.",
-			}
+			})
 		}
 		if strings.HasPrefix(resp, "error") {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Server error: %s", resp),
 				Hint:    "The server may have crashed. Check logs and try 'gtl stop' then 'gtl start'.",
-			}
+			})
 		}
 		fmt.Println("Server restarted.")
 

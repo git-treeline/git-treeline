@@ -32,7 +32,7 @@ var editorRefreshCmd = &cobra.Command{
 		// Load from worktree (not mainRepo) so branch-specific config is respected
 		pc := config.LoadProjectConfig(absPath)
 		if pc.Project() == "" {
-			return errNoProjectConfig()
+			return cliErr(cmd, errNoProjectConfig())
 		}
 
 		uc := config.LoadUserConfig("")
