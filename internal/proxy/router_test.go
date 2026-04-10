@@ -563,9 +563,9 @@ func newWSBackend(t *testing.T, path string) int {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
-		fmt.Fprintf(buf, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept)
-		buf.Flush()
+		defer func() { _ = conn.Close() }()
+		_, _ = fmt.Fprintf(buf, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept)
+		_ = buf.Flush()
 		frame := make([]byte, 256)
 		n, _ := conn.Read(frame)
 		_, _ = conn.Write(frame[:n])
@@ -586,18 +586,13 @@ func dialWebSocket(t *testing.T, tsURL, host, path string) string {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 
 	key := base64.StdEncoding.EncodeToString([]byte("test-websocket-key!!"))
-	fmt.Fprintf(conn, "GET %s HTTP/1.1\r\n", path)
-	fmt.Fprintf(conn, "Host: %s\r\n", host)
-	fmt.Fprintf(conn, "Upgrade: websocket\r\n")
-	fmt.Fprintf(conn, "Connection: Upgrade\r\n")
-	fmt.Fprintf(conn, "Sec-WebSocket-Key: %s\r\n", key)
-	fmt.Fprintf(conn, "Sec-WebSocket-Version: 13\r\n")
-	fmt.Fprintf(conn, "\r\n")
+	_, _ = fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n",
+		path, host, key)
 
-	conn.SetDeadline(time.Now().Add(3 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
 	reader := bufio.NewReader(conn)
 	statusLine, err := reader.ReadString('\n')
 	if err != nil {
@@ -627,9 +622,9 @@ func TestRouterWebSocketUpgrade(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
-		fmt.Fprintf(buf, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept)
-		buf.Flush()
+		defer func() { _ = conn.Close() }()
+		_, _ = fmt.Fprintf(buf, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", accept)
+		_ = buf.Flush()
 		frame := make([]byte, 256)
 		n, _ := conn.Read(frame)
 		_, _ = conn.Write(frame[:n])
