@@ -36,17 +36,17 @@ Use this when you've edited .treeline.yml and don't use 'gtl start'
 		reg := registry.New("")
 		entry := reg.Find(absPath)
 		if entry == nil {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("No allocation found for %s", absPath),
 				Hint:    "Run 'gtl setup' first to allocate ports and generate the env file.",
-			}
+			})
 		}
 
 		if err := setup.RegenerateEnvFile(absPath, uc); err != nil {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Env sync failed: %s", err),
 				Hint:    "Check your env: block in .treeline.yml. If using {resolve:...} tokens, ensure the linked project is allocated.",
-			}
+			})
 		}
 
 		tmpl := pc.EnvTemplate()

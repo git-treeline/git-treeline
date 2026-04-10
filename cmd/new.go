@@ -46,7 +46,7 @@ Otherwise a new branch is created from --base (or the current branch).`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := worktreeGuard(cmd, args); err != nil {
-			return err
+			return cliErr(cmd, err)
 		}
 
 		branch := args[0]
@@ -83,7 +83,7 @@ Otherwise a new branch is created from --base (or the current branch).`,
 		}
 
 		if err := requireServeInstalled(); err != nil {
-			return err
+			return cliErr(cmd, err)
 		}
 
 		projectName := pc.Project()
@@ -111,7 +111,7 @@ Otherwise a new branch is created from --base (or the current branch).`,
 				fmt.Println(style.Actionf("No allocation found — running setup..."))
 				s := setup.New(existingWT, mainRepo, uc)
 				if _, err := s.Run(); err != nil {
-					return errSetupFailed(err)
+					return cliErr(cmd, errSetupFailed(err))
 				}
 				reg = registry.New("")
 				alloc = reg.Find(existingWT)
@@ -194,7 +194,7 @@ Otherwise a new branch is created from --base (or the current branch).`,
 		s.Options.DryRun = false
 		alloc, err := s.Run()
 		if err != nil {
-			return errSetupFailed(err)
+			return cliErr(cmd, errSetupFailed(err))
 		}
 
 		printRouterAndTunnel(uc, projectName, alloc.Branch)

@@ -41,20 +41,20 @@ Related commands:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		listenPort, err := strconv.Atoi(args[0])
 		if err != nil || listenPort < 1 || listenPort > 65535 {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Invalid listen port: %s", args[0]),
 				Hint:    "Port must be a number between 1 and 65535.",
-			}
+			})
 		}
 
 		var targetPort int
 		if len(args) == 2 {
 			targetPort, err = strconv.Atoi(args[1])
 			if err != nil || targetPort < 1 || targetPort > 65535 {
-				return &CliError{
+				return cliErr(cmd, &CliError{
 					Message: fmt.Sprintf("Invalid target port: %s", args[1]),
 					Hint:    "Port must be a number between 1 and 65535.",
-				}
+				})
 			}
 		} else {
 			targetPort, err = inferTargetPort()
@@ -64,10 +64,10 @@ Related commands:
 		}
 
 		if listenPort == targetPort {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Listen port and target port are the same (%d).", listenPort),
 				Hint:    "The proxy needs different ports for listen and target.",
-			}
+			})
 		}
 
 		return proxy.Run(proxy.Options{

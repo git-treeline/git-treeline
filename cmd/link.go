@@ -51,10 +51,10 @@ Examples:
 			return listLinks(reg, absPath)
 		}
 		if len(args) != 2 {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: "Missing arguments.",
 				Hint:    "Usage: gtl link <project> <branch>",
-			}
+			})
 		}
 
 		project := args[0]
@@ -62,15 +62,15 @@ Examples:
 
 		alloc := reg.Find(absPath)
 		if alloc == nil {
-			return errNoAllocation(absPath)
+			return cliErr(cmd, errNoAllocation(absPath))
 		}
 
 		target := reg.FindProjectBranch(project, branch)
 		if target == nil {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("No allocation for project %q on branch %q.", project, branch),
 				Hint:    "Run 'gtl setup' in that worktree first.",
-			}
+			})
 		}
 
 		if err := reg.SetLink(absPath, project, branch); err != nil {

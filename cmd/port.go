@@ -33,12 +33,12 @@ var portCmd = &cobra.Command{
 		reg := registry.New("")
 		entry := reg.Find(absPath)
 		if entry == nil {
-			return errNoAllocation(absPath)
+			return cliErr(cmd, errNoAllocation(absPath))
 		}
 
 		ports := format.GetPorts(format.Allocation(entry))
 		if len(ports) == 0 {
-			return errNoAllocationNoPorts(absPath)
+			return cliErr(cmd, errNoAllocationNoPorts(absPath))
 		}
 
 		if portJSON {

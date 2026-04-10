@@ -54,7 +54,7 @@ var setupCmd = &cobra.Command{
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := requireServeInstalled(); err != nil {
-			return err
+			return cliErr(cmd, err)
 		}
 
 		path := "."

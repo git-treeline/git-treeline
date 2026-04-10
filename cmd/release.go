@@ -51,17 +51,17 @@ var releaseCmd = &cobra.Command{
 			modes++
 		}
 		if modes > 1 {
-			return errMutuallyExclusive("PATH, --project, and --all")
+			return cliErr(cmd, errMutuallyExclusive("PATH, --project, and --all"))
 		}
 
 		if releaseProject != "" {
-			return runReleaseBatch(releaseProject, false)
+			return cliErr(cmd, runReleaseBatch(releaseProject, false))
 		}
 		if releaseAll {
-			return runReleaseBatch("", true)
+			return cliErr(cmd, runReleaseBatch("", true))
 		}
 
-		return runReleaseSingle(args)
+		return cliErr(cmd, runReleaseSingle(args))
 	},
 }
 

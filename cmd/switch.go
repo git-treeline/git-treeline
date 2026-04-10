@@ -48,7 +48,7 @@ Must be run from inside a worktree (not the main repo).`,
 		resolvedAbs, _ := filepath.EvalSymlinks(absPath)
 		resolvedMain, _ := filepath.EvalSymlinks(mainRepo)
 		if resolvedAbs == resolvedMain {
-			return errNotInWorktree()
+			return cliErr(cmd, errNotInWorktree())
 		}
 
 		branch := target

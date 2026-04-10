@@ -79,10 +79,10 @@ var configGetCmd = &cobra.Command{
 		uc := config.LoadUserConfig("")
 		val := uc.Get(args[0])
 		if val == nil {
-			return &CliError{
+			return cliErr(cmd, &CliError{
 				Message: fmt.Sprintf("Key %q not found.", args[0]),
 				Hint:    "Use 'gtl config list' to see all keys, or 'gtl config set <key> <value>' to create one.",
-			}
+			})
 		}
 		switch v := val.(type) {
 		case map[string]any:

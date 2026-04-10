@@ -33,13 +33,13 @@ var openCmd = &cobra.Command{
 		reg := registry.New("")
 		entry := reg.Find(absPath)
 		if entry == nil {
-			return errNoAllocation(absPath)
+			return cliErr(cmd, errNoAllocation(absPath))
 		}
 
 		fa := format.Allocation(entry)
 		ports := format.GetPorts(fa)
 		if len(ports) == 0 {
-			return errNoAllocationNoPorts(absPath)
+			return cliErr(cmd, errNoAllocationNoPorts(absPath))
 		}
 
 		pc := config.LoadProjectConfig(absPath)
@@ -51,7 +51,7 @@ var openCmd = &cobra.Command{
 		url := buildOpenURL(ports[0], project, branch, uc.RouterDomain(), uc.RouterPort(), service.IsRunning(), service.IsPortForwardConfigured())
 
 		fmt.Printf("Opening %s\n", url)
-		return openBrowser(url)
+		return cliErr(cmd, openBrowser(url))
 	},
 }
 
