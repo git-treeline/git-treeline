@@ -106,7 +106,11 @@ resumes the server in the original terminal. Ctrl+C exits the supervisor.`,
 			return nil
 		}
 
-		// Fresh start path — run pre_start hooks
+		// Fresh start — check for project name drift before proceeding
+		if err := checkDriftOrAbort(absPath); err != nil {
+			return cliErr(cmd, err)
+		}
+
 		if err := runPreStartHooks(activeHooks, port, absPath); err != nil {
 			return cliErr(cmd, err)
 		}

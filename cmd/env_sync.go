@@ -30,6 +30,10 @@ Use this when you've edited .treeline.yml and don't use 'gtl start'
 		}
 		absPath, _ := filepath.Abs(cwd)
 
+		if err := checkDriftOrAbort(absPath); err != nil {
+			return cliErr(cmd, err)
+		}
+
 		pc := config.LoadProjectConfig(absPath)
 		uc := config.LoadUserConfig("")
 

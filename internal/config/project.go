@@ -324,6 +324,36 @@ func (pc *ProjectConfig) Exists() bool {
 	return err == nil
 }
 
+// SetProject writes the project name to .treeline.yml. If a project: line
+// exists, it's replaced in place. Otherwise the field is prepended.
+func (pc *ProjectConfig) SetProject(name string) error {
+	path := pc.configPath()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	content := string(raw)
+	newLine := fmt.Sprintf("project: %s", name)
+
+	lines := strings.Split(content, "\n")
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "project:") {
+			lines[i] = newLine
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append([]string{newLine}, lines...)
+	}
+
+	pc.Data["project"] = name
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+}
+
 // migrateDefaultBranch rewrites default_branch → merge_target in the YAML
 // file if the old key is present. Runs once per load, idempotent.
 func (pc *ProjectConfig) migrateDefaultBranch() {

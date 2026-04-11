@@ -45,6 +45,7 @@ var doctorCmd = &cobra.Command{
 		}
 
 		doctorConfig(pc, det, absPath)
+		doctorProjectDrift(absPath)
 		doctorPortConfig()
 		doctorAllocation(absPath)
 		doctorRuntime(absPath)
@@ -71,6 +72,10 @@ func doctorJSONOutput(pc *config.ProjectConfig, det *detect.Result, absPath stri
 		cfgInfo["treeline_yml"] = "missing"
 	}
 	result["config"] = cfgInfo
+
+	if drift := doctorProjectDriftJSON(absPath); drift != nil {
+		result["project_drift"] = drift
+	}
 
 	reg := registry.New("")
 	alloc := reg.Find(absPath)
