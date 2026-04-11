@@ -721,6 +721,67 @@ hooks:
 	}
 }
 
+func TestSetProject_ExistingKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte("project: old-name\nport_count: 2\n"), 0o644)
+
+	pc := LoadProjectConfig(dir)
+	if err := pc.SetProject("new-name"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if !strings.Contains(content, "project: new-name") {
+		t.Errorf("expected project: new-name, got:\n%s", content)
+	}
+	if strings.Contains(content, "old-name") {
+		t.Errorf("old name should be gone, got:\n%s", content)
+	}
+	if !strings.Contains(content, "port_count: 2") {
+		t.Errorf("expected other fields preserved, got:\n%s", content)
+	}
+	if pc.Project() != "new-name" {
+		t.Errorf("in-memory name: got %q, want %q", pc.Project(), "new-name")
+	}
+}
+
+func TestSetProject_NoExistingKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte("port_count: 2\n"), 0o644)
+
+	pc := LoadProjectConfig(dir)
+	if err := pc.SetProject("injected"); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if !strings.Contains(content, "project: injected") {
+		t.Errorf("expected project: injected prepended, got:\n%s", content)
+	}
+	if !strings.Contains(content, "port_count: 2") {
+		t.Errorf("expected existing content preserved, got:\n%s", content)
+	}
+}
+
+func TestSetProject_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".treeline.yml")
+	_ = os.WriteFile(path, []byte("project: myapp\n"), 0o644)
+
+	pc := LoadProjectConfig(dir)
+	_ = pc.SetProject("myapp")
+	_ = pc.SetProject("myapp")
+
+	data, _ := os.ReadFile(path)
+	if count := strings.Count(string(data), "project:"); count != 1 {
+		t.Errorf("expected exactly 1 project: line, got %d in:\n%s", count, string(data))
+	}
+}
+
 func TestRewriteEnvFileBlock_PreservesRestOfFile(t *testing.T) {
 	input := "project: myapp\n\nenv_file:\n  target: .env.local\n  source: .env.local\n\ndatabase:\n  adapter: postgresql\n"
 	got := rewriteEnvFileToSimple(input, ".env.local")

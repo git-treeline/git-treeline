@@ -1,5 +1,6 @@
 ## [0.37.0]
 
+- **Project name drift detection** — `gtl start`, `gtl setup`, and `gtl env sync` now detect when the `project` field in `.treeline.yml` doesn't match the registry allocation. On drift, the user is prompted to revert `.treeline.yml` to the registry name (default: yes). Declining aborts with a hint to release all worktrees first, then re-setup. `gtl doctor` reports drift diagnostically (text and `--json`).
 - **`gtl routes` command** — shows routing URLs for the current worktree. Prints the HTTPS router URL (or localhost fallback) for every allocated port, plus tunnel URL when configured. Supports `--json` for scripting and MCP consumption.
 - **MCP write operations** — the MCP server now supports `setup`, `new`, `link`, `unlink`, `config_set`, and `env_sync` tools. Read tools expanded with `resolve`, `env`, `where`, and `routes`. Tool descriptions improved for AI agent consumption.
 - **Shared `proxy.BuildRouterURL`** — router URL construction extracted from three call sites into a single testable function. Eliminates duplication across `open`, `resolve`, `routes`, and MCP tools.

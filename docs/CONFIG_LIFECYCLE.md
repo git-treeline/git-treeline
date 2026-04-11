@@ -21,7 +21,7 @@ Edit `.treeline.yml` in your worktree, then use `gtl start`, `gtl env sync`, or 
 | `copy_files` | No — provisioning only | `gtl setup` |
 | `database.*` | No — destructive | `gtl db reset` |
 | `port_count` | No — registry conflict risk | `gtl setup` |
-| `project` | Yes (read on demand) | Next command that uses it |
+| `project` | Yes — **drift detection** (see below) | Revert `.treeline.yml` when prompted |
 | `hooks` | N/A | Fires when the hook event occurs |
 
 **Note on `commands.start`:** `gtl start` reads the new command only when no supervisor is running. If the supervisor is already alive (even if the server was stopped via `gtl stop`), `gtl start` resumes with the original command — `gtl stop` stops the child process but the supervisor stays alive. To pick up a new `commands.start`, Ctrl+C the supervisor terminal and run `gtl start` fresh. (`gtl restart` will warn you if it detects a mismatch.)
@@ -77,6 +77,16 @@ You updated setup commands — for example, added `yarn install`.
 - **`gtl setup`** runs the new commands.
 - **`gtl switch --setup`** runs setup after switching branches.
 - Not automatic on `gtl start` — setup commands can be slow (bundle install, migrations).
+
+### "I changed `project`"
+
+You renamed the `project:` field in `.treeline.yml`.
+
+- **`gtl start`, `gtl setup`, `gtl env sync`** detect the mismatch between the YAML name and the registry name and prompt you to revert.
+- **Default behavior:** accept the revert (Enter / Y). The `.treeline.yml` is rewritten to the registry name and the command proceeds.
+- **Decline:** the command aborts. Routing, databases, Redis keys, and resolve links are all keyed to the original name — changing it without migrating those resources would cause silent breakage.
+- **To actually rename:** release all worktrees for the project (`gtl release --all --project <name>`), update `.treeline.yml`, then run `gtl setup` to allocate under the new name.
+- **`gtl doctor`** reports drift diagnostically without prompting.
 
 ### "I changed `port_count`"
 

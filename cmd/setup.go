@@ -62,6 +62,11 @@ var setupCmd = &cobra.Command{
 			path = args[0]
 		}
 
+		setupAbs, _ := filepath.Abs(path)
+		if err := checkDriftOrAbort(setupAbs); err != nil {
+			return cliErr(cmd, err)
+		}
+
 		uc := config.LoadUserConfig("")
 		s := setup.New(path, setupMainRepo, uc)
 		s.Options.DryRun = setupDryRun

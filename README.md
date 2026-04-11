@@ -636,7 +636,7 @@ See [Framework examples](#framework-examples) for complete examples. Available f
 
 | Field | Description |
 |---|---|
-| `project` | Project name (defaults to directory name) |
+| `project` | Project name (defaults to directory name). Once allocated, renaming triggers drift detection — see below |
 | `merge_target` | Branch that `prune --merged` checks against (auto-detected if omitted) |
 | `port_count` | Number of contiguous ports per worktree (default: 1) |
 | `env_file` | Env file path (string shorthand, e.g. `.env.local`) — or map with `path` and `seed_from` when they differ |
@@ -677,6 +677,14 @@ Available in `env` values:
 | `{resolve:project/branch}` | URL of another project's allocation on a specific branch |
 
 > **`{router_url}` vs `localhost:{port}` for your app's host:** Use `localhost:{port}` for your application's canonical host (e.g. `APPLICATION_HOST`, `APP_URL`). It works whether or not `gtl serve` is running and has zero external dependencies. Reserve `{router_url}` for values that specifically need the HTTPS router domain — CORS allowed origins, CSP directives, or cross-service display links.
+
+### Project name drift detection
+
+Once a worktree is allocated, the `project` name is stored in the registry and used for database names, Redis key prefixes, router URLs, and resolve links. If you rename `project:` in `.treeline.yml` without releasing and re-allocating, those persistent identifiers become stale.
+
+`gtl start`, `gtl setup`, and `gtl env sync` detect this mismatch and prompt to revert `.treeline.yml` to the registry name. `gtl doctor` reports drift diagnostically.
+
+To actually rename a project: release all worktrees (`gtl release --all --project <old-name>`), update `.treeline.yml`, then run `gtl setup`.
 
 ## Database cloning (optional)
 
