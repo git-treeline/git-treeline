@@ -12,21 +12,19 @@ import (
 	"github.com/git-treeline/git-treeline/internal/worktree"
 )
 
-// errServeNotInstalled is the shared error returned when commands require
-// the HTTPS router but it hasn't been installed yet.
-var errServeNotInstalled error = &CliError{
-	Message: "HTTPS router not installed.",
-	Hint:    "Run 'gtl serve install' first (one-time setup).",
-	DocsURL: "https://git-treeline.dev/docs/#getting-started",
-}
-
-// requireServeInstalled returns errServeNotInstalled when the HTTPS CA is
-// absent and GTL_HEADLESS is not set. Call from commands that need the router.
-func requireServeInstalled() error {
-	if !proxy.IsCAInstalled() && os.Getenv("GTL_HEADLESS") == "" {
-		return errServeNotInstalled
+// warnServeNotInstalled prints a non-blocking warning when the HTTPS router
+// is not installed. Used by commands that benefit from but don't require it.
+func warnServeNotInstalled() {
+	if proxy.IsCAInstalled() || os.Getenv("GTL_HEADLESS") != "" {
+		return
 	}
-	return nil
+	uc := config.LoadUserConfig("")
+	if !uc.RouterWarningsEnabled() {
+		return
+	}
+	fmt.Fprintln(os.Stderr, style.Warnf("HTTPS router not installed — local URLs will use http://localhost:{port}."))
+	fmt.Fprintln(os.Stderr, style.Dimf("  Run 'gtl install' or 'gtl serve install' to enable HTTPS routing."))
+	fmt.Fprintln(os.Stderr)
 }
 
 // printRouterAndTunnel prints the Router URL and Tunnel hint after setup.

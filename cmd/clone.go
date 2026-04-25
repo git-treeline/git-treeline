@@ -44,9 +44,7 @@ The server is NOT auto-started. Review the project, then run 'gtl start'.`,
 			}
 		}
 
-		if err := requireServeInstalled(); err != nil {
-			return cliErr(cmd, err)
-		}
+		warnServeNotInstalled()
 
 		if len(args) == 0 {
 			return cliErr(cmd, &CliError{

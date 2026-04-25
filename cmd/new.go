@@ -93,9 +93,7 @@ Otherwise a new branch is created from --base (or the current branch).`,
 			}
 		}
 
-		if err := requireServeInstalled(); err != nil {
-			return cliErr(cmd, err)
-		}
+		warnServeNotInstalled()
 
 		projectName := pc.Project()
 		wtPath := resolveNewWorktreePath(mainRepo, projectName, branch, uc)

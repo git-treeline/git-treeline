@@ -37,9 +37,7 @@ var reviewCmd = &cobra.Command{
 resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := requireServeInstalled(); err != nil {
-			return cliErr(cmd, err)
-		}
+		warnServeNotInstalled()
 
 		prNumber, err := strconv.Atoi(args[0])
 		if err != nil {
