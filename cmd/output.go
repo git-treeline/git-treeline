@@ -15,7 +15,7 @@ import (
 // warnServeNotInstalled prints a non-blocking warning when the HTTPS router
 // is not installed. Used by commands that benefit from but don't require it.
 func warnServeNotInstalled() {
-	if proxy.IsCAInstalled() || os.Getenv("GTL_HEADLESS") != "" {
+	if routerIsHealthy() || os.Getenv("GTL_HEADLESS") != "" {
 		return
 	}
 	uc := config.LoadUserConfig("")
@@ -27,19 +27,27 @@ func warnServeNotInstalled() {
 	fmt.Fprintln(os.Stderr)
 }
 
-// printRouterAndTunnel prints the Router URL and Tunnel hint after setup.
-// Called from setup, new, and clone to avoid duplication.
-func printRouterAndTunnel(uc *config.UserConfig, project, branch string) {
-	routeKey := proxy.RouteKey(project, branch)
+// printLocalAndRouter prints immediately usable URLs after start.
+// Tunnels are intentionally omitted here; use gtl routes or gtl tunnel for
+// public sharing URLs.
+func printLocalAndRouter(uc *config.UserConfig, project, branch string, port int) {
+	if port > 0 {
+		fmt.Println(style.Actionf("Local:  %s", style.Link(fmt.Sprintf("http://localhost:%d", port))))
+	}
+
+	printRouterURL(uc, project, branch)
+}
+
+// printRouterURL prints the local HTTPS router URL when the router is running.
+func printRouterURL(uc *config.UserConfig, project, branch string) {
+	if uc.RouterMode() == config.RouterModeDisabled {
+		return
+	}
 	domain := uc.RouterDomain()
 
 	if service.IsRunning() {
 		url := proxy.BuildRouterURL(0, project, branch, domain, uc.RouterPort(), true, service.IsPortForwardConfigured())
 		fmt.Println(style.Actionf("Router: %s", style.Link(url)))
-	}
-
-	if tunnelDomain := uc.TunnelDomain(""); tunnelDomain != "" {
-		fmt.Println(style.Actionf("Tunnel: run %s → %s", style.Cmd("gtl tunnel"), style.Link("https://"+routeKey+"."+tunnelDomain)))
 	}
 }
 

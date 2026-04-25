@@ -82,12 +82,17 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 			pc := config.LoadProjectConfig(absPath)
 			uc := config.LoadUserConfig("")
 			projectName := pc.Project()
-			printRouterAndTunnel(uc, projectName, branch)
+			reg := registry.New("")
+			alloc := reg.Find(absPath)
+			ports := format.GetPorts(format.Allocation(alloc))
+			primaryPort := 0
+			if len(ports) > 0 {
+				primaryPort = ports[0]
+			}
+			printLocalAndRouter(uc, projectName, branch, primaryPort)
 
 			if reviewOpen {
-				reg := registry.New("")
-				if alloc := reg.Find(absPath); alloc != nil {
-					ports := format.GetPorts(format.Allocation(alloc))
+				if alloc != nil {
 					if len(ports) > 0 {
 						url := buildOpenURL(ports[0], projectName, branch, uc.RouterDomain(), uc.RouterPort(), service.IsRunning(), service.IsPortForwardConfigured())
 						fmt.Printf("Opening %s\n", url)
@@ -144,10 +149,12 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 
 			if alloc != nil {
 				printExistingAllocation(prNumber, branch, existing, alloc)
-				printRouterAndTunnel(uc, projectName, branch)
+				ports := format.GetPorts(format.Allocation(alloc))
+				if len(ports) > 0 {
+					printLocalAndRouter(uc, projectName, branch, ports[0])
+				}
 
 				if reviewOpen {
-					ports := format.GetPorts(format.Allocation(alloc))
 					if len(ports) > 0 {
 						url := buildOpenURL(ports[0], projectName, branch, uc.RouterDomain(), uc.RouterPort(), service.IsRunning(), service.IsPortForwardConfigured())
 						fmt.Printf("Opening %s\n", url)
@@ -187,16 +194,12 @@ resources, and run setup. Requires the gh CLI (https://cli.github.com).`,
 			return cliErr(cmd, errSetupFailed(err))
 		}
 
-		if alloc != nil {
-			printRouterAndTunnel(uc, projectName, alloc.Branch)
-		}
-
 		fmt.Println()
 		fmt.Printf("PR #%d ready for review:\n", prNumber)
 		fmt.Printf("  Branch:   %s\n", branch)
 		fmt.Printf("  Path:     %s\n", wtPath)
 		if alloc != nil {
-			fmt.Printf("  URL:      http://localhost:%d\n", alloc.Port)
+			printLocalAndRouter(uc, projectName, alloc.Branch, alloc.Port)
 		}
 
 		if reviewOpen && alloc != nil && alloc.Port > 0 {
@@ -228,7 +231,6 @@ func printExistingAllocation(prNumber int, branch, path string, alloc registry.A
 	fmt.Printf("  Path:     %s\n", path)
 	if len(ports) > 0 {
 		fmt.Printf("  Port:     %s\n", format.JoinInts(ports, ", "))
-		fmt.Printf("  URL:      http://localhost:%d\n", ports[0])
 	}
 }
 

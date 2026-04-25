@@ -67,13 +67,8 @@ var setupCmd = &cobra.Command{
 		uc := config.LoadUserConfig("")
 		s := setup.New(path, setupMainRepo, uc)
 		s.Options.DryRun = setupDryRun
-		alloc, err := s.Run()
-		if err != nil {
+		if _, err := s.Run(); err != nil {
 			return err
-		}
-
-		if !setupDryRun {
-			printRouterAndTunnel(uc, s.ProjectConfig.Project(), alloc.Branch)
 		}
 
 		absPath, _ := filepath.Abs(path)
