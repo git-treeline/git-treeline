@@ -46,36 +46,25 @@ Download the latest binary from [GitHub Releases](https://github.com/git-treelin
 
 ## First-time setup on your machine
 
-Two paths depending on whether you're the **first developer** setting up git-treeline for a project, or **joining a project** that already has a `.treeline.yml`.
-
 ### 1. Install the CLI
 
 Use [Homebrew](#homebrew), [Go](#from-source-requires-go-126), or a [release binary](#from-release-binary). Installing `gtl` does **not** require `sudo` and does **not** install certificates or background services by itself.
 
-### 2a. First developer — `gtl init`
+### 2. Run `gtl install`
 
-If your project doesn't have a `.treeline.yml` yet, create one:
+Whether you're the first developer setting up the project or you're joining a repo that already has `.treeline.yml`:
 
 ```bash
 cd your-project
-gtl init
-```
-
-This generates the config and detects your framework. Then run `gtl install` (step 2b) to complete setup.
-
-### 2b. Any developer — `gtl install`
-
-Whether you just ran `gtl init` or you're joining a project that already has `.treeline.yml`:
-
-```bash
 gtl install
 ```
 
 This single command handles everything:
-1. **Creates user config** if missing
-2. **Installs the post-checkout hook** so future worktrees auto-setup
-3. **Allocates ports and writes env** for the current worktree
-4. **Optionally enables local HTTPS routing** — prompted with a link to the [networking docs](https://git-treeline.dev/docs/networking/#the-https-router-gtl-serve); requires sudo for CA trust and port forwarding. Can be skipped and run later via `gtl serve install`. If you skip it, Treeline can also save `warnings.router: false` so you are not reminded again.
+1. **Creates `.treeline.yml`** if missing and detects your framework
+2. **Creates user config** if missing
+3. **Installs the post-checkout hook** so future worktrees auto-setup
+4. **Allocates ports and writes env** for the current worktree
+5. **Optionally enables local HTTPS routing** — prompted with a link to the [networking docs](https://git-treeline.dev/docs/networking/#the-https-router-gtl-serve); requires sudo for CA trust and port forwarding. Can be skipped and run later via `gtl serve install`. If you skip it once, `router.mode` stays `prompt` and Treeline may offer it again later. If you disable future offers, Treeline saves `router.mode: disabled` and stays on localhost-only workflows until you manually run `gtl serve install` or reset the mode.
 
 The HTTPS router gives you `https://project-branch.prt.dev` URLs. Without it, worktrees are accessible at `http://localhost:{port}`. `gtl setup`, `gtl new`, `gtl clone`, and `gtl review` all work without the router. See **`gtl serve status`** and **`gtl serve uninstall`** to inspect or remove the HTTPS stack.
 
@@ -87,18 +76,18 @@ The HTTPS router gives you `https://project-branch.prt.dev` URLs. Without it, wo
 
 ## Quick start
 
-### 1. Initialize your project
+### 1. Install Treeline in the repo
 
 ```bash
 cd your-project
-gtl init
+gtl install
 ```
 
-`init` auto-detects your framework (Next.js, Vite, Rails, Express, Python, Rust, Go) and generates a tailored `.treeline.yml`. It also writes a treeline section to `AGENTS.md` (or `CLAUDE.md` if that exists) so AI agents know to use `gtl port` instead of assuming port 3000. This works with Cursor, Claude Code, and Codex.
+`install` auto-detects your framework when `.treeline.yml` is missing and generates a tailored config. It also creates user config if needed, installs the post-checkout hook, allocates resources for the current worktree, and optionally offers the HTTPS router.
 
-After generating the config, `init` runs framework-aware diagnostics and prints actionable warnings — for example, if your Vite project needs `vite.config.js` changes to read the allocated port, or if your Node project lacks a dotenv library. Commit the config so your team shares it.
+After generating the config, Treeline runs framework-aware diagnostics and prints actionable warnings — for example, if your Vite project needs `vite.config.js` changes to read the allocated port, or if your Node project lacks a dotenv library. Commit `.treeline.yml` so your team shares it.
 
-Use `--project myapp` to set the project name explicitly, or `--skip-agent-config` to skip agent context generation.
+Use `gtl init` directly only when you want to generate or regenerate `.treeline.yml` without running the rest of install.
 
 ### 2. Create and set up a worktree
 
