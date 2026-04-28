@@ -37,11 +37,10 @@ brews:
       generate_completions_from_executable(bin/"git-treeline", "completion", base_name: "gtl")
     caveats: |
       Get started:
-        1. gtl serve install     HTTPS router (one-time, requires sudo)
-        2. gtl init              Initialize your first project
-        3. gtl setup             Allocate ports for this worktree
+        cd your-project && gtl install
 
-      Docs: https://git-treeline.dev/docs/#getting-started
+      One command: config, hooks, ports, env, and optional HTTPS routing.
+      Docs: https://git-treeline.dev/docs/getting-started/
 
 changelog:
   sort: asc
