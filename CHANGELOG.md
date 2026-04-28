@@ -1,4 +1,4 @@
-## [Unreleased]
+## [0.39.0]
 
 - **`gtl install` command** — single command to set up git-treeline for a project and machine. Creates `.treeline.yml` if missing, creates user config, installs the post-checkout hook, allocates ports, and optionally enables the local HTTPS router (prompted with a docs link). Safe to run on first clone or any time after — every step is idempotent. Replaces the fragmented `gtl init` → `gtl setup` onboarding flow and works for both first-project setup and later joiners.
 - **Core worktree commands no longer require HTTPS router** — previously `gtl setup`, `gtl new`, `gtl clone`, and `gtl review` would hard-fail if `gtl serve install` hadn't been run. Now they print a warning and proceed, so developers can use localhost-only workflows without the HTTPS stack. The warning points to `gtl install` or `gtl serve install`.
