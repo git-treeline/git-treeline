@@ -1,3 +1,7 @@
+## [0.39.2]
+
+- **`gtl install` auto-refreshes a stale router service** — after `brew upgrade`, launchd and systemd keep the long-lived router process running the previous binary, so `gtl install` would print "HTTPS router: already running" while the running process was actually the old version (or, worse, mapped to a deleted Cellar path). `gtl install` now detects this — when the plist/unit's binary path is missing on disk, or when the running router's recorded version differs from the CLI — and bounces the service in place. No sudo required, since only the launchd plist / systemd unit is rewritten. The Linux install path also now restarts the unit after `enable --now` so binary upgrades actually take effect.
+
 ## [0.39.0]
 
 - **`gtl install` command** — single command to set up git-treeline for a project and machine. Creates `.treeline.yml` if missing, creates user config, installs the post-checkout hook, allocates ports, and optionally enables the local HTTPS router (prompted with a docs link). Safe to run on first clone or any time after — every step is idempotent. Replaces the fragmented `gtl init` → `gtl setup` onboarding flow and works for both first-project setup and later joiners.
