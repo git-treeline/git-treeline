@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -425,6 +426,33 @@ func TestVerifyDNS_RetryThenSucceed(t *testing.T) {
 	}
 }
 
+// lookupHostVia must dial the provided resolver and ignore the OS resolver.
+// We point it at a UDP port that's bound but never replies, so a correct
+// implementation hits its own timeout. A regression that wired the system
+// resolver back in would succeed (or fail with a different error shape).
+func TestLookupHostVia_UsesGivenResolverNotSystem(t *testing.T) {
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = pc.Close() }()
+	resolver := pc.LocalAddr().String()
+
+	// example.com would resolve fine via the system resolver. If our
+	// implementation accidentally falls back to it, this lookup will
+	// succeed and the assertion below will fail.
+	start := time.Now()
+	_, err = lookupHostVia("example.com.", resolver, 200*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected lookup to fail when resolver is unresponsive, got success — system resolver may be in the path")
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("lookup took %v — expected to time out near 200ms", elapsed)
+	}
+}
+
 // --- parseTunnelListHasName tests ---
 
 func TestParseTunnelListHasName(t *testing.T) {
@@ -495,5 +523,25 @@ func TestParseTunnelListID(t *testing.T) {
 func TestParseTunnelListID_InvalidJSON(t *testing.T) {
 	if parseTunnelListID([]byte("garbage"), "gtl") != "" {
 		t.Error("expected empty string for invalid JSON")
+	}
+}
+
+// TestParseTunnelList_RejectsStderrPollutedJSON pins the regression that
+// broke `gtl tunnel` once cloudflared started warning about an outdated
+// local version. CombinedOutput() used to splice that WRN line into the
+// JSON payload, parseTunnelList* returned false/"" for every tunnel, and
+// every named tunnel showed up as "(not found)" even when it existed.
+// The fix is to capture stdout only; this test documents the failure
+// shape so future refactors don't reintroduce it.
+func TestParseTunnelList_RejectsStderrPollutedJSON(t *testing.T) {
+	polluted := []byte(
+		`[{"id":"abc","name":"gtl"}]` + "\n" +
+			`2026-05-13T13:01:10Z WRN Your version 2026.3.0 is outdated. We recommend upgrading it to 2026.5.0` + "\n",
+	)
+	if parseTunnelListHasName(polluted, "gtl") {
+		t.Error("parser must reject polluted JSON; if you're relying on this case, capture stdout only (Output, not CombinedOutput)")
+	}
+	if parseTunnelListID(polluted, "gtl") != "" {
+		t.Error("parser must reject polluted JSON; capture stdout only")
 	}
 }
